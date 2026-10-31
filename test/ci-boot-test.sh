@@ -12,7 +12,8 @@
 #   - SSH comes up as the default user; cloud-init finishes without errors
 #   - no swap; packages.tsv present; live package list captured (live-packages.tsv)
 #   - `cis-check` passes on the running system (after the first-boot AIDE baseline)
-# Warnings only: GitHub key import (rate limits on shared CI IPs), failed units.
+# Warnings only: GitHub key import (rate limits on shared CI IPs), failed units (their
+# journals are saved as journal-UNIT.txt).
 #
 # Progress: script lines are prefixed with the elapsed time ([mm:ss]), waits report
 # their state about once a minute, and the VM's serial console is streamed with a
@@ -141,8 +142,15 @@ vm 'cat /var/lib/fai-build/packages.tsv' > "$out/packages.tsv" || bad "no /var/l
 vm "dpkg-query -W -f='\${db:Status-Status}\t\${binary:Package}\t\${Version}\n' | awk -F'\t' '\$1==\"installed\" {print \$2 \"\t\" \$3}' | sort" \
     > "$out/live-packages.tsv" || bad "could not list installed packages"
 vm 'cat /var/lib/fai-build/build-info' > "$out/build-info.txt" || true
+# network as configured (ifupdown files from FAI and cloud-init) and as it came up
+vm 'sudo grep -r . /etc/network/interfaces /etc/network/interfaces.d/; ip -br addr' > "$out/network.txt" 2>&1 || true
 vm 'sudo systemctl --failed --no-legend --plain' > "$out/failed-units.txt" || true
-[[ -s $out/failed-units.txt ]] && warn "failed units: $(awk '{print $1}' "$out/failed-units.txt" | tr '\n' ' ')"
+# Each failed unit's journal for this boot: saved in full, the tail shown here.
+for unit in $(awk '{print $1}' "$out/failed-units.txt"); do
+    warn "failed unit: $unit (journal: journal-$unit.txt)"
+    vm "sudo journalctl -b -u '$unit' --no-pager -o short-monotonic" > "$out/journal-$unit.txt" 2>&1 || true
+    tail -n 20 "$out/journal-$unit.txt" | sed "s/^/  [$unit] /"
+done
 
 phase "AIDE first-boot baseline (up to ${aide_timeout}s)"
 deadline=$((SECONDS + aide_timeout)) next=0
