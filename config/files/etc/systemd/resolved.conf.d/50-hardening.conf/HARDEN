@@ -1,0 +1,5 @@
+# Managed by FAI (class HARDEN). No multicast name resolution on servers: don't
+# answer or send LLMNR/mDNS queries on the local network. Unicast DNS is unaffected.
+[Resolve]
+LLMNR=no
+MulticastDNS=no

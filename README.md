@@ -448,7 +448,8 @@ cloud-init if it varies per machine.
   is `ttyAMA0` on QEMU and many Arm servers and `ttyS0` on others.
 - **Networking** (cloud and metal) is systemd-networkd with systemd-resolved, configured
   by cloud-init on first boot. Without other network config, cloud-init uses DHCP (IPv4
-  and IPv6) on the first NIC with a link. For static IPs on metal, use cloud-init
+  and IPv6) on the first NIC with a link. LLMNR and multicast DNS are off
+  (`files/etc/systemd/resolved.conf.d/50-hardening.conf`). For static IPs on metal, use cloud-init
   `network:` config: put a `network-config` file in the NoCloud seed.
 - **Changing the username:** it lives in two places, `default_user` in
   `files/etc/cloud/cloud.cfg.d/90-fai-defaults.cfg/SERVER` and `AllowUsers` in

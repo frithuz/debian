@@ -10,7 +10,7 @@
 #
 # Checks (any failure -> exit 1):
 #   - SSH comes up as the default user; cloud-init finishes without errors
-#   - no swap; DNS works; packages.tsv present; live package list captured (live-packages.tsv)
+#   - no swap; DNS works, LLMNR off; packages.tsv present; live package list captured (live-packages.tsv)
 #   - `cis-check` passes on the running system (after the first-boot AIDE baseline)
 # Warnings only: GitHub key import (rate limits on shared CI IPs), failed units (their
 # journals are saved as journal-UNIT.txt).
@@ -146,6 +146,8 @@ vm 'cat /var/lib/fai-build/build-info' > "$out/build-info.txt" || true
 vm 'sudo grep -r . /etc/systemd/network/; ip -br addr; sudo networkctl --no-pager; sudo resolvectl status --no-pager' \
     > "$out/network.txt" 2>&1 || true
 vm 'getent ahosts deb.debian.org >/dev/null' || bad "DNS lookup failed in the VM (see network.txt)"
+llmnr=$(vm 'sudo resolvectl llmnr' 2>&1) || true
+[[ $llmnr == *'Global: no'* && $llmnr != *': yes'* ]] || bad "LLMNR is not off: $(tr '\n' ' ' <<< "$llmnr")"
 vm 'sudo systemctl --failed --no-legend --plain' > "$out/failed-units.txt" || true
 # Each failed unit's journal for this boot: saved in full, the tail shown here.
 for unit in $(awk '{print $1}' "$out/failed-units.txt"); do
