@@ -68,7 +68,7 @@ QEMU_PKGS_amd64 := qemu-system-x86 ovmf
 QEMU_PKGS_arm64 := qemu-system-arm qemu-efi-aarch64
 deps:
 	$(SUDO) apt-get install -y --no-install-recommends make fai-server fai-setup-storage \
-	    debootstrap xorriso squashfs-tools dosfstools mtools zstd ca-certificates \
+	    debootstrap xorriso squashfs-tools dosfstools mtools zstd ca-certificates mount \
 	    qemu-utils $(QEMU_PKGS_$(HOST_ARCH)) cloud-image-utils openssh-client shellcheck
 
 check:
