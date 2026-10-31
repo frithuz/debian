@@ -324,6 +324,9 @@ the ISO (metal seeds come from it) and the tests, but not the cloud image.
   throwaway key it generates and adds to a copy of `user-data`. It requires cloud-init
   to finish and the running system to pass `cis-check`. The real `ssh_import_id: gh:garbee`
   still runs; if it can't import (GitHub rate-limits shared CI addresses), that's only a warning.
+  Progress is logged as it goes: elapsed-time prefixes, a status line about once a
+  minute while waiting, and the VM's serial console with a `[vm]` prefix. The run's
+  summary page gets a table of how long each phase took.
 - **KVM:** the "Host facts" step prints whether `/dev/kvm` is available. x64 runners
   have it. If the Arm64 runner doesn't, its boot test still runs, but emulated, so it's
   much slower (the job allows 150 minutes).
