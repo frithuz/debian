@@ -23,13 +23,13 @@ fcopy -M /etc/cis-check/exceptions                                             #
 fcopy -M /etc/tmpfiles.d/cis-logs.conf \
          /etc/systemd/system/dailyaidecheck.service.d/50-cis-umask.conf \
          /etc/systemd/system/apt-daily-upgrade.service.d/50-cis-umask.conf
-[ -f $target/etc/logrotate.d/dpkg ] && fai-sed -E 's/create 0?644 root root/create 0640 root root/' /etc/logrotate.d/dpkg
+[ -f $target/etc/logrotate.d/dpkg ] && fai-sed 's/create 0\?644 root root/create 0640 root root/' /etc/logrotate.d/dpkg
 
 # /dev/shm without exec/suid/devices (1.1.2.2)
 ainsl /etc/fstab "tmpfs /dev/shm tmpfs rw,nosuid,nodev,noexec 0 0"
 # /tmp: metal has its own LV (disk_config); cloud gets tmpfs from FAIBASE/10-misc,
 # which doesn't set noexec. Add it (1.1.2.1.4).
-fai-sed -E 's#^(tmpfs\s+/tmp\s+tmpfs\s+)nodev,nosuid,#\1nodev,nosuid,noexec,#' /etc/fstab
+fai-sed 's#^\(tmpfs\s\+/tmp\s\+tmpfs\s\+\)nodev,nosuid,#\1nodev,nosuid,noexec,#' /etc/fstab
 
 # 1.5.3 no core dumps
 ainsl /etc/security/limits.conf '* hard core 0'
