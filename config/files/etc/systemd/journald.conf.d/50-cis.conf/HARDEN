@@ -2,4 +2,4 @@
 [Journal]
 Storage=persistent
 Compress=yes
-ForwardToSyslog=no
+# ForwardToSyslog=no is in syslog.conf, to replace systemd's file of that name

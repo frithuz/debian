@@ -130,7 +130,14 @@ conf_get() { # KEY FILE...
         END { if (found) print val }'
 }
 pwq_files() { echo "$R/etc/security/pwquality.conf"; ls "$R"/etc/security/pwquality.conf.d/*.conf 2>/dev/null; }
-jd_files()  { echo "$R/etc/systemd/journald.conf"; ls "$R"/usr/lib/systemd/journald.conf.d/*.conf "$R"/etc/systemd/journald.conf.d/*.conf 2>/dev/null; }
+jd_files() { # in systemd's order: drop-ins sorted by name across dirs, /etc replaces /usr/lib
+    local f; local -A drop=()
+    echo "$R/etc/systemd/journald.conf"
+    for f in "$R"/usr/lib/systemd/journald.conf.d/*.conf "$R"/etc/systemd/journald.conf.d/*.conf; do
+        [ -e "$f" ] && drop[${f##*/}]=$f
+    done
+    for f in $(printf '%s\n' "${!drop[@]}" | LC_ALL=C sort); do echo "${drop[$f]}"; done
+}
 num_between() { [[ $1 =~ ^-?[0-9]+$ ]] && (( $1 >= $2 && $1 <= $3 )); }
 
 # sshd effective config (first value wins, includes resolved)

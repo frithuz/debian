@@ -54,7 +54,7 @@ What it covers, by benchmark section:
 | 5.2 sudo / su | `files/etc/sudoers.d/50-cis`, `HARDEN/20-pam` | pty, log file, timeout. `su` limited to the empty `sugroup` |
 | 5.3 PAM | `HARDEN/20-pam`, `files/usr/share/pam-configs/*` | faillock, pwquality, pwhistory, no `nullok` (Debian's `unix` profile is dpkg-diverted so upgrades can't put it back) |
 | 5.4 accounts | `HARDEN/30-accounts`, `files/etc/profile.d/50-cis.sh` | password ageing defaults, yescrypt, inactive lock, umask 027, 15-min shell timeout |
-| 6.1 logging | `files/etc/systemd/journald.conf.d/50-cis.conf`, `files/etc/tmpfiles.d/cis-logs.conf` | journald only, persistent, compressed. Log files not world-readable (also re-applied at boot) |
+| 6.1 logging | `files/etc/systemd/journald.conf.d/{50-cis,syslog}.conf`, `files/etc/tmpfiles.d/cis-logs.conf` | journald only, persistent, compressed. Log files not world-readable (also re-applied at boot) |
 | 6.3 integrity | `aide`, `aide-firstboot-init.service` | AIDE baseline built on first boot (after cloud-init), daily check timer, audit tools protected |
 | 7.x files & accounts | `HARDEN/30-accounts`, checks only | account file permissions, no world-writable/unowned files, account sanity |
 

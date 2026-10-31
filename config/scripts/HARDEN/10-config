@@ -14,7 +14,8 @@ fcopy -M /etc/default/grub.d/40-cis.cfg                                        #
 fcopy -m root,root,0440 /etc/sudoers.d/50-cis                                  # 5.2
 $ROOTCMD visudo -cf /etc/sudoers.d/50-cis
 fcopy -M /etc/profile.d/50-cis.sh                                              # 5.4.3.2/3
-fcopy -M /etc/systemd/journald.conf.d/50-cis.conf                              # 6.1.2
+fcopy -M /etc/systemd/journald.conf.d/50-cis.conf \
+         /etc/systemd/journald.conf.d/syslog.conf                              # 6.1.2
 fcopy -M /etc/aide/aide.conf.d/99_cis_audit_tools                              # 6.3.3
 fcopy -M /etc/systemd/system/aide-firstboot-init.service                       # 6.3.1
 fcopy -m root,root,0755 /usr/local/sbin/cis-check                              # the checker itself

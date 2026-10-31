@@ -1,0 +1,5 @@
+# Managed by FAI (class HARDEN). CIS 6.1.2.2: journald is the only logging system.
+# Replaces systemd's /usr/lib/systemd/journald.conf.d/syslog.conf (ForwardToSyslog=yes),
+# which would otherwise sort after, and override, 50-cis.conf.
+[Journal]
+ForwardToSyslog=no
