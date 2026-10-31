@@ -363,7 +363,8 @@ This repo is meant to be public. Here's what that exposes and what's kept out:
   fork code.
 - **Before the first push:** `git status --ignored` should list `config/secrets/*` and
   `build/` as ignored. Upstream FAI's example password hashes (`fai`) have been removed
-  from `class/FAIBASE.var`.
+  from `class/FAIBASE.var`, and the metal installer's own root password (also `fai`,
+  from fai-server's `nfsroot.conf`) is locked at build time (see the Makefile).
 
 ## How FAI composes a machine: classes
 

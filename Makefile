@@ -124,7 +124,10 @@ $(CLOUD_IMAGE): $(CONFIG_FILES) | $(BUILD)
 # ---- metal ------------------------------------------------------------------
 
 # FAI's own settings (fai-server's /etc/fai) with what we don't want filtered out:
-# no memtest anywhere (fai-cd also adds a boot entry for it when it is in the nfsroot).
+# - no memtest anywhere (fai-cd also adds a boot entry for it when it is in the nfsroot)
+# - root locked in the installer: upstream sets the well-known password "fai", and the
+#   hash would be readable in the public ISO anyway. For SSH during installs, set
+#   SSH_IDENTITY (a public key) instead of a password.
 # Next to the nfsroot so `make clean` keeps it and doesn't force an nfsroot rebuild.
 FAI_ETC := /srv/fai/etc
 $(FAI_ETC)/NFSROOT: $(wildcard /etc/fai/NFSROOT /etc/fai/*.conf /etc/fai/grub.cfg*)
@@ -132,6 +135,8 @@ $(FAI_ETC)/NFSROOT: $(wildcard /etc/fai/NFSROOT /etc/fai/*.conf /etc/fai/grub.cf
 	$(SUDO) mkdir -p $(dir $(FAI_ETC))
 	$(SUDO) cp -a /etc/fai $(FAI_ETC)
 	$(SUDO) sed -i '/memtest/d' $@
+	$(SUDO) sed -i '/^FAI_ROOTPW=/d' $(FAI_ETC)/nfsroot.conf
+	echo "FAI_ROOTPW='!'" | $(SUDO) tee -a $(FAI_ETC)/nfsroot.conf >/dev/null
 
 /srv/fai/nfsroot/.THIS_IS_THE_FAI_NFSROOT: $(FAI_ETC)/NFSROOT
 	$(SUDO) fai-make-nfsroot -v -C $(FAI_ETC)
