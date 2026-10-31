@@ -10,7 +10,8 @@ openssh-client openssh-server
 time
 procinfo
 nullmailer
-sudo
+sudo-rs                    # memory-safe sudo; set up by scripts/DEBIAN/30-sudo-rs
+sudo-                      # never the C sudo alongside it
 locales
 console-setup kbd
 pciutils usbutils

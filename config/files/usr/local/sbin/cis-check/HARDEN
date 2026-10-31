@@ -412,7 +412,7 @@ else
     fail 5.1.4-22 "sshd configuration" "sshd -T failed: $(head -1 <<< "$SSHD_ERR")"
 fi
 
-check 5.2.1 "sudo installed" all_installed sudo
+check 5.2.1 "sudo installed (sudo-rs)" all_installed sudo-rs
 sudoers_all() { cat "$R/etc/sudoers" "$R"/etc/sudoers.d/* 2>/dev/null | grep -v '^[[:space:]]*#'; }
 sudo_pty() { sudoers_all | grep -Eq '^[[:space:]]*Defaults([[:space:]]|,).*\buse_pty\b' || { echo "no Defaults use_pty"; return 1; }; }
 sudo_log() { sudoers_all | grep -Eq '^[[:space:]]*Defaults([[:space:]]|,).*\blogfile=' || { echo "no Defaults logfile="; return 1; }; }

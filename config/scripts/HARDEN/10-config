@@ -12,7 +12,7 @@ fcopy -M /etc/issue /etc/issue.net /etc/motd                                   #
 chmod -x $target/etc/update-motd.d/10-uname 2>/dev/null || true                # no OS details at login
 fcopy -M /etc/default/grub.d/40-cis.cfg                                        # 1.3.1.2
 fcopy -m root,root,0440 /etc/sudoers.d/50-cis                                  # 5.2
-$ROOTCMD visudo -cf /etc/sudoers.d/50-cis
+$ROOTCMD visudo-rs -cf /etc/sudoers.d/50-cis
 fcopy -M /etc/profile.d/50-cis.sh                                              # 5.4.3.2/3
 fcopy -M /etc/systemd/journald.conf.d/50-cis.conf \
          /etc/systemd/journald.conf.d/syslog.conf                              # 6.1.2

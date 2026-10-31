@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# sudo-rs instead of sudo. Debian's sudo-rs only installs sudo-rs and visudo-rs, with
+# no sudoers or PAM files, so add those and the usual command names. su stays
+# util-linux's (HARDEN/20-pam restricts it via /etc/pam.d/su).
+
+error=0; trap 'error=$(($?>$error?$?:$error))' ERR # save maximum error code
+
+fcopy -m root,root,0440 /etc/sudoers
+fcopy -M /etc/pam.d/sudo
+$ROOTCMD visudo-rs -cf /etc/sudoers
+fai-link /usr/bin/sudo sudo-rs
+fai-link /usr/sbin/visudo ../bin/visudo-rs
+
+exit $error

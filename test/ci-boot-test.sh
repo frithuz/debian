@@ -137,6 +137,14 @@ phase "basics"
 # Without it these checks see empty output and pass without checking anything.
 sw=$(vm 'sudo swapon --show --noheadings') || bad "could not check swap"
 [[ -z $sw ]] || bad "swap is active"
+sudo_version=$(vm 'sudo --version' 2>&1) || true
+[[ $sudo_version == sudo-rs* ]] || bad "sudo is not sudo-rs: $(head -1 <<< "$sudo_version")"
+# -n: fail instead of prompting. jonathan has no password, so a prompt means no NOPASSWD rule.
+vm 'sudo -n true' || bad "$user has no passwordless sudo"
+# The caller's PATH survives sudo (Defaults:%sudo !secure_path in /etc/sudoers).
+mapfile -t paths < <(vm 'export PATH=/opt/ci-path-test:$PATH; echo "$PATH"; sudo -n sh -c '\''echo "$PATH"'\''' 2>&1)
+[[ ${paths[0]} == /opt/ci-path-test:* && ${paths[1]-} == "${paths[0]}" ]] \
+    || bad "sudo did not keep $user's PATH: '${paths[0]-}' became '${paths[1]-}'"
 vm 'cat /var/lib/fai-build/packages.tsv' > "$out/packages.tsv" || bad "no /var/lib/fai-build/packages.tsv"
 # what is really installed now, after first boot (compared with the build manifest in CI)
 vm "dpkg-query -W -f='\${db:Status-Status}\t\${binary:Package}\t\${Version}\n' | awk -F'\t' '\$1==\"installed\" {print \$2 \"\t\" \$3}' | sort" \

@@ -1,0 +1,12 @@
+# Managed by FAI (class DEBIAN). Read by sudo-rs, whose Debian package ships no
+# sudoers of its own. Put local rules in /etc/sudoers.d/. Check with `visudo -c`.
+Defaults env_reset
+Defaults secure_path="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+# Admins keep their own PATH under sudo. They can already run anything as root.
+Defaults:%sudo !secure_path
+Defaults use_pty
+
+root  ALL=(ALL:ALL) ALL
+%sudo ALL=(ALL:ALL) ALL
+
+@includedir /etc/sudoers.d

@@ -1,0 +1,7 @@
+#%PAM-1.0
+# Managed by FAI (class DEBIAN). PAM service for sudo-rs, also used for `sudo -i`.
+# Same stack as the sudo package's.
+session    required   pam_limits.so
+@include common-auth
+@include common-account
+@include common-session-noninteractive
