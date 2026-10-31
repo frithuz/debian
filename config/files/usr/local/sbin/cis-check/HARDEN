@@ -134,15 +134,16 @@ jd_files()  { echo "$R/etc/systemd/journald.conf"; ls "$R"/usr/lib/systemd/journ
 num_between() { [[ $1 =~ ^-?[0-9]+$ ]] && (( $1 >= $2 && $1 <= $3 )); }
 
 # sshd effective config (first value wins, includes resolved)
-SSHD_T=''
+# Must not run in a subshell (e.g. $(sshd_effective)), or SSHD_T is lost.
+SSHD_T='' SSHD_ERR=''
 sshd_effective() {
     [ -n "$SSHD_T" ] && return 0
     if [ $LIVE = 1 ]; then
-        SSHD_T=$(sshd -T 2>&1) || { echo "$SSHD_T"; SSHD_T=''; return 1; }
+        SSHD_T=$(sshd -T 2>&1) || { SSHD_ERR=$SSHD_T; SSHD_T=''; return 1; }
     else
         SSHD_T=$(chroot "$R" /bin/sh -c 'mkdir -p /run/sshd; d=$(mktemp -d) &&
             ssh-keygen -q -t ed25519 -N "" -f "$d/k" && /usr/sbin/sshd -T -h "$d/k"; rc=$?; rm -rf "$d"; exit $rc' 2>&1) \
-            || { echo "$SSHD_T"; SSHD_T=''; return 1; }
+            || { SSHD_ERR=$SSHD_T; SSHD_T=''; return 1; }
     fi
 }
 sshd_val() { printf '%s\n' "$SSHD_T" | awk -v k="$1" '$1 == k { $1=""; sub(/^ /, ""); print; exit }'; }
@@ -371,7 +372,7 @@ hostkeys() { # 2: private, 3: public
 }
 check 5.1.2 "ssh private host key permissions" hostkeys priv
 check 5.1.3 "ssh public host key permissions" hostkeys pub
-if out=$(sshd_effective); then
+if sshd_effective; then
     sshd_access() { local k; for k in allowusers allowgroups denyusers denygroups; do [ -n "$(sshd_val $k)" ] && return 0; done; echo "no AllowUsers/AllowGroups/DenyUsers/DenyGroups"; return 1; }
     sshd_banner() { local v; v=$(sshd_val banner); [ -n "$v" ] && [ "$v" != none ] || { echo "no Banner"; return 1; }; }
     sshd_alive() { num_between "$(sshd_val clientaliveinterval)" 1 99999 && num_between "$(sshd_val clientalivecountmax)" 1 99999 || { echo "ClientAliveInterval/CountMax not > 0"; return 1; }; }
@@ -401,7 +402,7 @@ if out=$(sshd_effective); then
     check 5.1.21 "sshd PermitUserEnvironment disabled" sshd_is permituserenvironment no
     check 5.1.22 "sshd UsePAM enabled" sshd_is usepam yes
 else
-    fail 5.1.4-22 "sshd configuration" "sshd -T failed: $(head -1 <<< "$out")"
+    fail 5.1.4-22 "sshd configuration" "sshd -T failed: $(head -1 <<< "$SSHD_ERR")"
 fi
 
 check 5.2.1 "sudo installed" all_installed sudo
