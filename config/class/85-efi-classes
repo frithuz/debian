@@ -1,13 +1,7 @@
 #!/usr/bin/env bash
 
-# define classes for disk_config in an EFI environment
-
-if [ ! -d /sys/firmware/efi ] || ifclass GRUB_PC; then
-    exit 0
-fi
-
-# first match wins; METAL is our physical-server layout (disk_config/METAL_EFI)
-for c in CLOUD METAL LVM FAIBASE; do
+# disk_config class for the install: CLOUD_EFI or METAL_EFI (first match wins)
+for c in CLOUD METAL; do
     if ifclass $c; then
 	echo ${c}_EFI
 	break

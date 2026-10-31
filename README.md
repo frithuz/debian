@@ -440,7 +440,9 @@ cloud-init if it varies per machine.
 - **Your own software:** create a metapackage, host it in an `aptly`/`reprepro` repo,
   and add it to `package_config/SERVER`. It gets the same check and manifest as
   everything else.
-- **UEFI only** for metal (`METAL_EFI`), on both arches. For legacy BIOS (amd64), add a `disk_config/METAL`.
+- **UEFI only**, on both arches. The amd64 ISO still boots in legacy BIOS mode (fai-cd
+  always builds it that way), but the installer then stops before touching the disks
+  (`class/15-uefi-only.sh`).
 - **Serial console:** amd64 sets `console=ttyS0` for IPMI SOL and cloud consoles. arm64
   sets nothing, and the kernel uses the console the firmware announces (ACPI SPCR), which
   is `ttyAMA0` on QEMU and many Arm servers and `ttyS0` on others.

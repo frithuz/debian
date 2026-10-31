@@ -1,9 +1,6 @@
 #!/usr/bin/env bash
+# UEFI only: every install uses GRUB_EFI. (Cloud images get it from the class
+# list in the Makefile; class/15-uefi-only.sh stops metal installs booted in
+# legacy BIOS mode.)
 
-ifclass -o GRUB_PC GRUB_EFI && exit 0
-
-if [ -d /sys/firmware/efi ]; then
-    echo GRUB_EFI
-elif ifclass -o I386 AMD64 ; then
-    echo GRUB_PC
-fi
+echo GRUB_EFI
