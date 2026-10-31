@@ -315,7 +315,7 @@ the ISO (metal seeds come from it) and the tests, but not the cloud image.
 | `cloud (amd64)` | `ubuntu-26.04` (x64) | build `cloud-amd64.qcow2` natively, then `test/ci-boot-test.sh` |
 | `cloud (arm64)` | `ubuntu-26.04-arm` (Arm64) | the same for `cloud-arm64.qcow2` |
 | `compare` | `ubuntu-26.04` | the build-time manifest must equal what's installed after first boot, per arch |
-| `metal (amd64/arm64)` | both | only when started by hand with "metal" ticked: build the ISOs |
+| `metal (amd64/arm64)` | both | build `metal-<arch>.iso` natively |
 
 - **Build environment:** every build runs in a privileged `debian:trixie` container with
   the host's `/dev`, which FAI needs for loop devices and chroots. Docker pulls the
