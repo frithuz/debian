@@ -13,4 +13,6 @@ UMask=0027
 IOSchedulingClass=idle
 
 [Install]
-WantedBy=multi-user.target
+# Not multi-user.target: cloud-final.service is ordered after it, so that would be an
+# ordering cycle and systemd would drop this job at boot.
+WantedBy=cloud-init.target
