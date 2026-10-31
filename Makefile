@@ -68,9 +68,10 @@ QEMU_PKGS_amd64 := qemu-system-x86 ovmf
 QEMU_PKGS_arm64 := qemu-system-arm qemu-efi-aarch64
 deps:
 	$(SUDO) apt-get install -y --no-install-recommends make fai-server fai-setup-storage \
-	    debootstrap xorriso squashfs-tools dosfstools mtools zstd ca-certificates mount udev tzdata \
+	    debootstrap xorriso squashfs-tools dosfstools mtools zstd ca-certificates mount udev \
 	    qemu-utils $(QEMU_PKGS_$(HOST_ARCH)) cloud-image-utils openssh-client shellcheck ipxe-qemu
 	getent group adm >/dev/null || $(SUDO) groupadd --system adm
+	[ -e /etc/localtime ] || { $(SUDO) ln -sf /usr/share/zoneinfo/Etc/UTC /etc/localtime && test -e /etc/localtime; }
 
 check:
 	@cd $(CONFIG) && bash -n class/[0-9]* scripts/*/* hooks/*.* bin/* files/usr/local/sbin/cis-check/HARDEN && echo "bash syntax: ok"
