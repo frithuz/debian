@@ -69,7 +69,7 @@ QEMU_PKGS_arm64 := qemu-system-arm qemu-efi-aarch64
 deps:
 	$(SUDO) apt-get install -y --no-install-recommends make fai-server fai-setup-storage \
 	    debootstrap xorriso squashfs-tools dosfstools mtools zstd ca-certificates mount udev tzdata \
-	    qemu-utils $(QEMU_PKGS_$(HOST_ARCH)) cloud-image-utils openssh-client shellcheck
+	    qemu-utils $(QEMU_PKGS_$(HOST_ARCH)) cloud-image-utils openssh-client shellcheck ipxe-qemu
 	getent group adm >/dev/null || $(SUDO) groupadd --system adm
 
 check:
