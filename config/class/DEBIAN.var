@@ -2,12 +2,7 @@ release=trixie
 apt_cdn=http://deb.debian.org
 security_cdn=http://security.debian.org
 
-# since bullseye Debian changed the suite name for security
-if [ $release = buster ]; then
-  secsuite=buster/updates
-else
-  secsuite=$release-security
-fi
+secsuite=$release-security
 
 CONSOLEFONT=
 KEYMAP=us-latin1
@@ -26,26 +21,9 @@ MODULESLIST="usbhid psmouse"
 #APTPROXY=http://faiserver:3142
 
 
-# The linux-image package has different names for Debian and Ubuntu
-if ifclass HWE; then # Ubuntu HWE kernel
-   kernelname=linux-generic-hwe-24.04
-elif ifclass UBUNTU; then
-    kernelname=linux-image-generic
-elif ifclass I386; then
-   kernelname=linux-image-686-pae
-elif ifclass AMD64; then
-   kernelname=linux-image-amd64
+# CLOUD.var overrides this with the cloud kernel flavour
+if ifclass AMD64; then
+    kernelname=linux-image-amd64
 elif ifclass ARM64; then
-   kernelname=linux-image-arm64
-fi
-
-if [ -z "$kernelname" ]; then
-    _arch=$(dpkg --print-architecture 2>/dev/null)
-    case $_arch in
-        i386)
-            kernelname=linux-image-686-pae ;;
-        *)
-            kernelname=linux-image-$_arch
-    esac
-    unset _arch
+    kernelname=linux-image-arm64
 fi

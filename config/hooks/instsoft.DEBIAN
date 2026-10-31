@@ -9,11 +9,6 @@ fi
 fcopy -Bi /etc/apt/apt.conf.d/force_confdef
 ainsl -a  /etc/ucf.conf "^conf_force_conffold=YES"
 
-# in case the locales are already included inside the base file (Ubuntu)
-if [ -f $target/usr/sbin/locale-gen ]; then
-    exit
-fi
-
 # if we want to install locales, install them now
 install_packages -l 2>/dev/null | egrep  -q  ' locales|locales '
 if [ $? -eq 0 ]; then

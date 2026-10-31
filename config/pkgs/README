@@ -1,6 +1,6 @@
-You can easily install *.deb or *.rpm files.
+You can easily install *.deb files.
 Create a subdirectory with a class name.
-Put the .deb or .rpm into this subdirectory.
+Put the .deb into this subdirectory.
 
-All files <CLASSNAME>/*.deb or <CLASSNAME>/*.rpm
+All files <CLASSNAME>/*.deb
 will then be installed.
