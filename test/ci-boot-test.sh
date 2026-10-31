@@ -132,29 +132,34 @@ if (( n > 0 )); then log "imported $n key(s) via ssh_import_id"
 else warn "no keys imported from GitHub (network or API rate limit on shared CI IPs?)"; fi
 
 phase "basics"
-[[ -z $(vm 'swapon --show --noheadings') ]] || bad "swap is active"
+# sudo: swapon is in /usr/sbin, and systemctl needs dbus (not installed) unless run as root.
+# Without it these checks see empty output and pass without checking anything.
+sw=$(vm 'sudo swapon --show --noheadings') || bad "could not check swap"
+[[ -z $sw ]] || bad "swap is active"
 vm 'cat /var/lib/fai-build/packages.tsv' > "$out/packages.tsv" || bad "no /var/lib/fai-build/packages.tsv"
 # what is really installed now, after first boot (compared with the build manifest in CI)
 vm "dpkg-query -W -f='\${db:Status-Status}\t\${binary:Package}\t\${Version}\n' | awk -F'\t' '\$1==\"installed\" {print \$2 \"\t\" \$3}' | sort" \
     > "$out/live-packages.tsv" || bad "could not list installed packages"
 vm 'cat /var/lib/fai-build/build-info' > "$out/build-info.txt" || true
-vm 'systemctl --failed --no-legend --plain' > "$out/failed-units.txt" || true
+vm 'sudo systemctl --failed --no-legend --plain' > "$out/failed-units.txt" || true
 [[ -s $out/failed-units.txt ]] && warn "failed units: $(awk '{print $1}' "$out/failed-units.txt" | tr '\n' ' ')"
 
 phase "AIDE first-boot baseline (up to ${aide_timeout}s)"
 deadline=$((SECONDS + aide_timeout)) next=0
-while [[ $(vm 'systemctl show -p ActiveState --value aide-firstboot-init.service') == activating ]]; do
-    (( SECONDS < deadline )) || { warn "AIDE baseline still running; 6.3.2 will fail"; break; }
+aide_state() { vm 'sudo systemctl show -p ActiveState --value aide-firstboot-init.service'; }
+# Also wait while it hasn't started yet: it's ordered after cloud-final.service.
+while [[ $(aide_state) =~ ^(activating|inactive)$ ]] && ! vm 'sudo test -e /var/lib/aide/aide.db'; do
+    (( SECONDS < deadline )) || { warn "AIDE baseline not done after ${aide_timeout}s ($(aide_state)); 6.3.2 will fail"; break; }
     if (( SECONDS >= next )); then
         # etimes/times: wall-clock and CPU seconds of the aide process
         et='' ct=''
         read -r et ct < <(vm 'ps -C aide -o etimes=,times= | head -1' 2>/dev/null || true) || true
-        log "AIDE baseline running${et:+: aide up $(mmss "$et"), $(mmss "${ct:-0}") CPU}"
+        log "AIDE baseline: $(aide_state)${et:+, aide up $(mmss "$et"), $(mmss "${ct:-0}") CPU}"
         next=$((SECONDS + heartbeat))
     fi
     sleep 30
 done
-log "AIDE: $(vm 'systemctl show -p ActiveState,Result --value aide-firstboot-init.service | paste -sd" "' 2>/dev/null || echo unknown)"
+log "AIDE: $(vm 'sudo systemctl show -p ActiveState,Result --value aide-firstboot-init.service | paste -sd" "' 2>/dev/null || echo unknown)"
 
 phase "cis-check (running system)"
 if vm 'sudo cis-check' > "$out/cis-check.txt" 2>&1; then
