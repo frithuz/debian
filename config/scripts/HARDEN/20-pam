@@ -16,7 +16,7 @@ fcopy -M /usr/share/pam-configs/faillock /usr/share/pam-configs/faillock_notify 
 fcopy -M /etc/security/pwquality.conf.d/50-cis.conf
 
 ainsl /etc/security/faillock.conf 'deny = 5'                 # 5.3.3.1.1
-ainsl /etc/security/faillock.conf 'unlock_time = 900'        # 5.3.3.1.2
+ainsl /etc/security/faillock.conf '^unlock_time = 900$'     # 5.3.3.1.2 (anchored: the file has '# root_unlock_time = 900')
 
 DEBIAN_FRONTEND=noninteractive $ROOTCMD pam-auth-update --enable unix faillock faillock_notify pwquality pwhistory
 

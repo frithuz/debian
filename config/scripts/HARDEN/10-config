@@ -32,6 +32,6 @@ ainsl /etc/fstab "tmpfs /dev/shm tmpfs rw,nosuid,nodev,noexec 0 0"
 fai-sed 's#^\(tmpfs\s\+/tmp\s\+tmpfs\s\+\)nodev,nosuid,#\1nodev,nosuid,noexec,#' /etc/fstab
 
 # 1.5.3 no core dumps
-ainsl /etc/security/limits.conf '* hard core 0'
+ainsl -Q /etc/security/limits.conf '* hard core 0'
 
 exit $error
