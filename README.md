@@ -331,7 +331,7 @@ the ISO (metal seeds come from it) and the tests, but not the cloud image.
 - **KVM:** the "Host facts" step prints whether `/dev/kvm` is available. x64 runners
   have it. If the Arm64 runner doesn't, its boot test still runs, but emulated, so it's
   much slower (the job allows 150 minutes).
-- **Artifacts:** reports and FAI logs on every run, images on non-PR runs (7 days).
+- **Artifacts:** reports and FAI logs on every run, images on non-PR runs. All are kept for 1 day.
   Any signed-in GitHub user can download artifacts of a public repository; see below.
 - **Action pins:** third-party actions are pinned to commit SHAs. To update, resolve the
   new tag with `git ls-remote https://github.com/actions/checkout refs/tags/vX.Y.Z` and

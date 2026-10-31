@@ -123,7 +123,7 @@ jobs:
             build/boot-test-${{ matrix.arch }}/
             !build/boot-test-${{ matrix.arch }}/qemu/
             build/fai-logs/
-          retention-days: 14
+          retention-days: 1
           if-no-files-found: warn
 
       - name: Upload image
@@ -133,7 +133,7 @@ jobs:
           name: cloud-${{ matrix.arch }}.qcow2
           path: build/cloud-${{ matrix.arch }}.qcow2
           compression-level: 0   # qcow2 is already compact; zipping it again only costs time
-          retention-days: 7
+          retention-days: 1
 
   compare:
     name: package sets consistent
@@ -199,4 +199,4 @@ jobs:
           name: metal-${{ matrix.arch }}.iso
           path: build/metal-${{ matrix.arch }}.iso
           compression-level: 0
-          retention-days: 7
+          retention-days: 1
