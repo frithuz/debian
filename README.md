@@ -297,7 +297,7 @@ provider's own SSH key mechanism works too.
 ### Starting over
 
 ```sh
-make clean                   # removes build/ and the test VM disks (keeps /srv/fai/nfsroot)
+make clean                   # removes build/ and the test VM disks (keeps /srv/fai/nfsroot and /srv/fai/etc)
 ```
 
 After editing anything in `config/`, just rerun `sudo make cloud` / `sudo make metal-iso`.

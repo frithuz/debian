@@ -123,8 +123,18 @@ $(CLOUD_IMAGE): $(CONFIG_FILES) | $(BUILD)
 
 # ---- metal ------------------------------------------------------------------
 
-/srv/fai/nfsroot/.THIS_IS_THE_FAI_NFSROOT:
-	$(SUDO) fai-make-nfsroot -v
+# FAI's own settings (fai-server's /etc/fai) with what we don't want filtered out:
+# no memtest anywhere (fai-cd also adds a boot entry for it when it is in the nfsroot).
+# Next to the nfsroot so `make clean` keeps it and doesn't force an nfsroot rebuild.
+FAI_ETC := /srv/fai/etc
+$(FAI_ETC)/NFSROOT: $(wildcard /etc/fai/NFSROOT /etc/fai/*.conf /etc/fai/grub.cfg*)
+	$(SUDO) rm -rf $(FAI_ETC)
+	$(SUDO) mkdir -p $(dir $(FAI_ETC))
+	$(SUDO) cp -a /etc/fai $(FAI_ETC)
+	$(SUDO) sed -i '/memtest/d' $@
+
+/srv/fai/nfsroot/.THIS_IS_THE_FAI_NFSROOT: $(FAI_ETC)/NFSROOT
+	$(SUDO) fai-make-nfsroot -v -C $(FAI_ETC)
 
 nfsroot: /srv/fai/nfsroot/.THIS_IS_THE_FAI_NFSROOT
 
@@ -135,7 +145,7 @@ metal-iso: $(METAL_ISO)
 $(METAL_ISO): $(CONFIG_FILES) | userdata-ready $(BUILD)
 	$(native_only)
 	$(MAKE) nfsroot
-	$(SUDO) fai-cd -f -M -c $(CONFIG) $@
+	$(SUDO) fai-cd -f -M -C $(FAI_ETC) -c $(CONFIG) $@
 	$(call give_back,$(BUILD) $@)
 
 # ---- test in QEMU -------------------------------------------------------------
