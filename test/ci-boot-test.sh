@@ -59,8 +59,11 @@ summary() { # RESULT
 
 # --- user-data = real user-data + throwaway key ---------------------------------
 phase "start VM"
-ssh-keygen -q -t ed25519 -N '' -C ci-boot-test -f "$out/id_ci"
-key=$(cat "$out/id_ci.pub")
+# The key goes in $QEMU_WORK, which CI doesn't upload, so it can't end up in an
+# artifact even when the job is cancelled before cleanup runs.
+mkdir -p "$QEMU_WORK"
+ssh-keygen -q -t ed25519 -N '' -C ci-boot-test -f "$QEMU_WORK/id_ci"
+key=$(cat "$QEMU_WORK/id_ci.pub")
 src=$here/../config/cloud-init/user-data
 if grep -qE '^ssh_authorized_keys:' "$src"; then
     sed "/^ssh_authorized_keys:/a\\  - $key" "$src" > "$out/user-data"
@@ -74,7 +77,7 @@ cleanup() {
     if [[ -f $QEMU_WORK/qemu.pid ]]; then kill "$(cat "$QEMU_WORK/qemu.pid")" 2>/dev/null || true; fi
     if [[ -n ${serial_pid:-} ]]; then sleep 1; kill "$serial_pid" 2>/dev/null || true; fi
     cp -f "$QEMU_WORK/serial.log" "$out/serial.log" 2>/dev/null || true
-    rm -f "$out/id_ci" "$QEMU_WORK/cloud-run.qcow2"
+    rm -f "$QEMU_WORK/id_ci" "$QEMU_WORK/cloud-run.qcow2"
     if [[ $rc == 0 && $fail == 0 ]]; then summary passed; else summary FAILED; fi
 }
 trap cleanup EXIT
@@ -89,7 +92,7 @@ if [[ ${SERIAL:-1} == 1 ]]; then
 fi
 
 # One multiplexed connection: nftables rate-limits new SSH connections (15/min).
-ssh_opts=(-p 2222 -i "$out/id_ci" -o IdentitiesOnly=yes -o BatchMode=yes
+ssh_opts=(-p 2222 -i "$QEMU_WORK/id_ci" -o IdentitiesOnly=yes -o BatchMode=yes
           -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR
           -o ConnectTimeout=10 -o ControlMaster=auto -o "ControlPath=$out/cm-%C" -o ControlPersist=30m)
 vm() { ssh "${ssh_opts[@]}" "$user@127.0.0.1" "$@"; }
