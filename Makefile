@@ -70,6 +70,7 @@ deps:
 	$(SUDO) apt-get install -y --no-install-recommends make fai-server fai-setup-storage \
 	    debootstrap xorriso squashfs-tools dosfstools mtools zstd ca-certificates mount \
 	    qemu-utils $(QEMU_PKGS_$(HOST_ARCH)) cloud-image-utils openssh-client shellcheck
+	getent group adm >/dev/null || $(SUDO) groupadd --system adm
 
 check:
 	@cd $(CONFIG) && bash -n class/[0-9]* scripts/*/* hooks/*.* bin/* files/usr/local/sbin/cis-check/HARDEN && echo "bash syntax: ok"
