@@ -1,0 +1,5 @@
+# Managed by FAI (class METAL). Physical machines have no metadata service:
+# use the NoCloud seed that scripts/METAL/20-cloud-init-seed writes to
+# /var/lib/cloud/seed/nocloud/. A USB stick labelled CIDATA or a kernel
+# argument like  ds=nocloud;s=http://host/path/  also work.
+datasource_list: [ NoCloud, None ]

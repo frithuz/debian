@@ -1,0 +1,53 @@
+PACKAGES install-norec ! MINT
+#cryptsetup-initramfs # needed if you use an encrypted partition
+bash-completion
+debconf-utils
+file
+zstd
+less
+rsync
+openssh-client openssh-server
+time
+procinfo
+nullmailer
+sudo
+locales
+console-setup kbd
+pciutils usbutils
+unattended-upgrades
+
+PACKAGES install NONFREE
+# you may want these non-free kernel drivers
+firmware-bnx2 firmware-bnx2x firmware-realtek
+firmware-cavium firmware-myricom firmware-netronome firmware-netxen
+firmware-linux-nonfree
+# a list of firmware for wifi/wireless
+firmware-misc-nonfree
+atmel-firmware firmware-ath9k-htc firmware-brcm80211
+firmware-iwlwifi firmware-libertas firmware-zd1211
+firmware-brcm80211 firmware-ti-connectivity
+
+# firmware-ipw2x00 # needs a debconf question
+
+# needed for a live ISO
+PACKAGES install-norec LIVEISO
+dracut dracut-live dracut-squash efibootmgr grub-pc grub-efi-amd64-bin
+
+PACKAGES install-norec CHROOT
+${kernelname}- # see class/DEBIAN.var
+
+PACKAGES install-norec AMD64
+${kernelname} # see class/DEBIAN.var
+
+PACKAGES install-norec ARM64
+${kernelname} # see class/DEBIAN.var
+grub-efi-arm64
+
+PACKAGES install-norec GRUB_PC
+grub-pc
+
+PACKAGES install-norec GRUB_EFI
+grub-efi dosfstools efibootmgr
+
+PACKAGES install LVM
+lvm2

@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# Gate the build on CIS Debian Level 1 Server: run cis-check against the finished
+# tree. Any FAIL fails the build (STOP_ON_ERROR, class/SERVER.var). The report goes
+# to the FAI logs and to /var/lib/fai-build/cis-check-build.txt on the machine.
+# Runs in LAST so the bootloader (GRUB_* classes) is already configured.
+
+ifclass HARDEN || exit 0
+
+# 1.4.2: grub-mkconfig keeps an existing file's mode; make it 0600 once.
+[ -f $target/boot/grub/grub.cfg ] && chmod 0600 $target/boot/grub/grub.cfg
+# 6.1.4.1: logs written during the install (apt, dpkg, FAI) are world-readable.
+find $target/var/log -type f \( -name 'wtmp*' -o -name 'btmp*' -o -name 'lastlog*' \) -exec chmod o-wx {} +
+find $target/var/log -type f ! \( -name 'wtmp*' -o -name 'btmp*' -o -name 'lastlog*' \) -exec chmod g-wx,o-rwx {} +
+
+report=$LOGDIR/cis-check.txt
+$target/usr/local/sbin/cis-check --root $target > $report 2>&1
+rc=$?
+mkdir -p $target/var/lib/fai-build
+cp $report $target/var/lib/fai-build/cis-check-build.txt
+
+grep -E '^(FAIL|EXCEPT|MANUAL)' $report
+tail -1 $report
+[ $rc = 0 ] || echo "ERROR: CIS check failed; see $report" >&2
+exit $rc

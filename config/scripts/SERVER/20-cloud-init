@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# cloud-init configures every machine on first boot.
+
+error=0; trap 'error=$(($?>$error?$?:$error))' ERR # save maximum error code
+
+fcopy -M /etc/cloud/cloud.cfg.d/90-fai-defaults.cfg
+
+# The image/install must not carry a baked-in identity; cloud-init regenerates these.
+rm -f $target/etc/ssh/ssh_host_*
+$ROOTCMD cloud-init clean --logs || true
+
+exit $error

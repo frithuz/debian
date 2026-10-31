@@ -1,0 +1,5 @@
+# Cloud-only extras. cloud-init itself is in SERVER (every machine has it).
+PACKAGES install-norec
+cloud-guest-utils          # growpart
+cloud-initramfs-growroot   # grow / on first boot to fill the provider's disk
+qemu-guest-agent

@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# CIS Level 1: drop in config files (files/**/HARDEN).
+
+error=0; trap 'error=$(($?>$error?$?:$error))' ERR # save maximum error code
+
+fcopy -m root,root,0600 /etc/ssh/sshd_config.d/10-cis.conf                    # 5.1.1
+chmod 0600 $target/etc/ssh/sshd_config
+fcopy -M /etc/sysctl.d/90-hardening.conf /etc/modprobe.d/90-hardening.conf
+fcopy -m root,root,0755 /etc/nftables.conf
+fcopy -m root,root,0640 /etc/audit/rules.d/50-hardening.rules
+fcopy -M /etc/issue /etc/issue.net /etc/motd                                   # 1.6
+chmod -x $target/etc/update-motd.d/10-uname 2>/dev/null || true                # no OS details at login
+fcopy -M /etc/default/grub.d/40-cis.cfg                                        # 1.3.1.2
+fcopy -m root,root,0440 /etc/sudoers.d/50-cis                                  # 5.2
+$ROOTCMD visudo -cf /etc/sudoers.d/50-cis
+fcopy -M /etc/profile.d/50-cis.sh                                              # 5.4.3.2/3
+fcopy -M /etc/systemd/journald.conf.d/50-cis.conf                              # 6.1.2
+fcopy -M /etc/aide/aide.conf.d/99_cis_audit_tools                              # 6.3.3
+fcopy -M /etc/systemd/system/aide-firstboot-init.service                       # 6.3.1
+fcopy -m root,root,0755 /usr/local/sbin/cis-check                              # the checker itself
+fcopy -M /etc/cis-check/exceptions                                             # accepted deviations
+# 6.1.4.1 log permissions stay tight: boot-time fixups, service umasks, logrotate
+fcopy -M /etc/tmpfiles.d/cis-logs.conf \
+         /etc/systemd/system/dailyaidecheck.service.d/50-cis-umask.conf \
+         /etc/systemd/system/apt-daily-upgrade.service.d/50-cis-umask.conf
+[ -f $target/etc/logrotate.d/dpkg ] && fai-sed -E 's/create 0?644 root root/create 0640 root root/' /etc/logrotate.d/dpkg
+
+# /dev/shm without exec/suid/devices (1.1.2.2)
+ainsl /etc/fstab "tmpfs /dev/shm tmpfs rw,nosuid,nodev,noexec 0 0"
+# /tmp: metal has its own LV (disk_config); cloud gets tmpfs from FAIBASE/10-misc,
+# which doesn't set noexec. Add it (1.1.2.1.4).
+fai-sed -E 's#^(tmpfs\s+/tmp\s+tmpfs\s+)nodev,nosuid,#\1nodev,nosuid,noexec,#' /etc/fstab
+
+# 1.5.3 no core dumps
+ainsl /etc/security/limits.conf '* hard core 0'
+
+exit $error

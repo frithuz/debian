@@ -1,0 +1,7 @@
+# Managed by FAI (class HARDEN). CIS 5.4.3.2 (shell timeout) and 5.4.3.3 (umask).
+if [ "${TMOUT:-}" != 900 ]; then
+    TMOUT=900
+    readonly TMOUT
+    export TMOUT
+fi
+umask 027

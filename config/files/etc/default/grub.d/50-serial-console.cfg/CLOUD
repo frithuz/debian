@@ -1,0 +1,4 @@
+# Managed by FAI (classes CLOUD, METAL; x86 only): console on VGA and serial (IPMI SOL, cloud consoles).
+GRUB_CMDLINE_LINUX="$GRUB_CMDLINE_LINUX console=tty0 console=ttyS0,115200n8"
+GRUB_TERMINAL="console serial"
+GRUB_SERIAL_COMMAND="serial --speed=115200"

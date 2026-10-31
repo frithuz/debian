@@ -1,0 +1,21 @@
+PACKAGES install-norec
+lvm2
+mdadm
+smartmontools
+nvme-cli
+ethtool
+lm-sensors
+ipmitool
+
+# CPU microcode exists only for x86
+PACKAGES install-norec AMD64
+intel-microcode amd64-microcode
+
+# Firmware for common server NICs/RAID. Needs non-free-firmware in the
+# build's apt sources (it is in FAI's default /etc/fai/apt/sources.list).
+PACKAGES install
+firmware-linux-free
+firmware-misc-nonfree
+firmware-bnx2 firmware-bnx2x
+firmware-realtek
+firmware-netronome firmware-netxen firmware-qlogic

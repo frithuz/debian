@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Root has no password and can't log in; admin access is via cloud-init's 'jonathan' + sudo.
+$ROOTCMD usermod -L root

@@ -1,0 +1,8 @@
+NIC1=eth0
+
+# Debian's slimmer kernel for VMs (virtio, Xen, Hyper-V, NVMe). Overrides DEBIAN.var.
+if ifclass ARM64; then
+    kernelname=linux-image-cloud-arm64
+else
+    kernelname=linux-image-cloud-amd64
+fi

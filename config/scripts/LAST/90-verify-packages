@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# Fail the build unless the installed system matches package_config/ exactly:
+# every package that should be installed is, and every removed one is gone.
+# install_packages only WARNS about names it can't find (typo, package renamed
+# or dropped from the release) and carries on; this turns that into an error.
+# STOP_ON_ERROR in class/SERVER.var makes the error stop the build.
+
+resolved=$($FAI/bin/resolve-packages $FAI $classes) || { echo "ERROR: resolve-packages failed" >&2; exit 1; }
+
+fail=0 count=0
+while IFS=$'\t' read -r pkg want cls; do
+    [ -n "$pkg" ] || continue
+    count=$((count+1))
+    status=$(dpkg-query --admindir=$target/var/lib/dpkg -W -f='${db:Status-Status}' "$pkg" 2>/dev/null)
+    if [ "$want" = install ] && [ "$status" != installed ]; then
+        echo "PACKAGE CHECK FAILED: $pkg (package_config/$cls) is not installed" >&2; fail=1
+    elif [ "$want" = remove ] && [ "$status" = installed ]; then
+        echo "PACKAGE CHECK FAILED: $pkg (removed by package_config/$cls) is installed" >&2; fail=1
+    fi
+done <<< "$resolved"
+
+printf '%s\n' "$resolved" > $LOGDIR/packages.expected
+[ $fail = 0 ] && echo "package check: all $count package_config entries match"
+exit $fail

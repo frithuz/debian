@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Cloud consoles are serial. x86: say so explicitly (ttyS0). arm64: set nothing; the
+# kernel takes the console from the firmware's ACPI SPCR table (ttyAMA0, ttyS0, ...
+# depending on the platform), and GRUB uses the UEFI console, which follows it.
+ifclass AMD64 || exit 0
+fcopy -M /etc/default/grub.d/50-serial-console.cfg

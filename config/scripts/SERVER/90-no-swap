@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Policy: servers have no swap. Fail loudly if any disk_config or package added some.
+
+if awk '$1 !~ /^#/ && $3 == "swap"' $target/etc/fstab | grep -q .; then
+    echo "ERROR: swap found in /etc/fstab, but this config must not set up swap:" >&2
+    awk '$1 !~ /^#/ && $3 == "swap"' $target/etc/fstab >&2
+    exit 1
+fi
+exit 0

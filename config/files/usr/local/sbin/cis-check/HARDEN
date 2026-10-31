@@ -1,0 +1,665 @@
+#!/usr/bin/env bash
+# cis-check: check this system against the automatable controls of the
+# CIS Debian Linux Benchmark, Level 1 - Server.
+#
+#   sudo cis-check              check the running system
+#   cis-check --root /target    check an installed tree (build time, as root);
+#                               controls that need the running system are SKIPped
+#   --quiet                     print only FAIL and MANUAL lines
+#
+# Result per control: PASS, FAIL, SKIP (not applicable / needs running system),
+# MANUAL (site decision or human review; never fails), EXCEPT (would fail, but is an
+# accepted deviation listed in /etc/cis-check/exceptions). Exit 1 if anything FAILs.
+#
+# Control IDs follow the CIS Debian Linux 12 Benchmark v1.1.0 numbering (the
+# Debian 13 benchmark keeps the same structure). This is an independent
+# implementation, not CIS-CAT: for a formal audit, run CIS-CAT or your auditor's
+# tool against a built machine as well.
+#
+# Managed by FAI (class HARDEN).
+
+R='' QUIET=0
+while [ $# -gt 0 ]; do
+    case $1 in
+        --root)  R=${2%/}; shift 2 ;;
+        --quiet) QUIET=1; shift ;;
+        -h|--help) sed -n '2,19p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        *) echo "cis-check: unknown argument $1" >&2; exit 2 ;;
+    esac
+done
+LIVE=1; [ -n "$R" ] && LIVE=0
+if [ "$(id -u)" != 0 ]; then echo "cis-check: run as root (sudo cis-check)" >&2; exit 2; fi
+for f in /etc/shadow /etc/passwd /etc/group /var/lib/dpkg/status; do
+    [ -r "$R$f" ] || { echo "cis-check: cannot read $R$f" >&2; exit 2; }
+done
+# Tools are looked up in sbin regardless of the caller's PATH; the caller's PATH is
+# kept for the root PATH integrity check (5.4.2.5).
+CALLER_PATH=$PATH
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+np=0 nf=0 ns=0 nm=0 nx=0
+EXCEPTIONS=$R/etc/cis-check/exceptions
+except_reason() { [ -f "$EXCEPTIONS" ] && awk -v id="$1" '$1 == id { sub(/^[^ \t]+[ \t]+/, ""); print; exit }' "$EXCEPTIONS"; }
+pass()   { np=$((np+1)); [ $QUIET = 1 ] || printf 'PASS    %-12s %s\n' "$1" "$2"; }
+fail()   { nf=$((nf+1)); printf 'FAIL    %-12s %s%s\n' "$1" "$2" "${3:+  -- $3}"; }
+skip()   { ns=$((ns+1)); [ $QUIET = 1 ] || printf 'SKIP    %-12s %s%s\n' "$1" "$2" "${3:+  -- $3}"; }
+manual() { nm=$((nm+1)); printf 'MANUAL  %-12s %s%s\n' "$1" "$2" "${3:+  -- $3}"; }
+except() { nx=$((nx+1)); printf 'EXCEPT  %-12s %s  -- %s (check says: %s)\n' "$1" "$2" "$3" "$4"; }
+# check ID TITLE FUNC [ARGS...]: FUNC prints a reason and returns non-zero on failure
+check() {
+    local id=$1 title=$2 out reason; shift 2
+    if out=$("$@" 2>&1); then pass "$id" "$title"; return; fi
+    out=$(printf '%s' "$out" | head -1)
+    reason=$(except_reason "$id")
+    if [ -n "$reason" ]; then except "$id" "$title" "$reason" "$out"; else fail "$id" "$title" "$out"; fi
+}
+live_only() { [ $LIVE = 1 ] || { skip "$1" "$2" "needs the running system"; return 1; }; }
+
+# ---------- helpers ----------------------------------------------------------
+installed() { [ "$(dpkg-query --admindir="$R/var/lib/dpkg" -W -f='${db:Status-Status}' "$1" 2>/dev/null)" = installed ]; }
+not_installed() { local p; for p; do installed "$p" && { echo "$p is installed"; return 1; }; done; return 0; }
+all_installed() { local p; for p; do installed "$p" || { echo "$p is not installed"; return 1; }; done; return 0; }
+
+uid_of() { awk -F: -v n="$1" '$1==n {print $3}' "$R/etc/passwd"; }
+gid_of() { awk -F: -v n="$1" '$1==n {print $3}' "$R/etc/group"; }
+
+# perm PATH MAXMODE [OWNER [GROUP|GROUP|...]]
+perm() {
+    local p=$R$1 max=$2 owner=${3:-root} groups=${4:-root} m u g ok=0 grp
+    [ -e "$p" ] || { echo "$1 does not exist"; return 1; }
+    read -r m u g < <(stat -Lc '%a %u %g' "$p")
+    (( (8#$m & ~8#$max) == 0 )) || { echo "$1 mode $m, want $max or stricter"; return 1; }
+    [ "$u" = "$(uid_of "$owner")" ] || { echo "$1 owner uid $u, want $owner"; return 1; }
+    for grp in ${groups//|/ }; do [ "$g" = "$(gid_of "$grp")" ] && ok=1; done
+    [ $ok = 1 ] || { echo "$1 group gid $g, want $groups"; return 1; }
+}
+perm_if_exists() { [ ! -e "$R$1" ] || perm "$@"; }
+
+unit_state() { # enabled / disabled / masked / static / not-found ...
+    if [ $LIVE = 1 ]; then systemctl is-enabled "$1" 2>/dev/null
+    else systemctl --root="$R" is-enabled "$1" 2>/dev/null; fi
+}
+unit_enabled() { local s; s=$(unit_state "$1"); [ "$s" = enabled ] || { echo "$1 is ${s:-not found}"; return 1; }; }
+unit_off()     { local s; s=$(unit_state "$1"); case $s in enabled|enabled-runtime|alias) echo "$1 is $s"; return 1 ;; esac; }
+
+# sysctl: running value, or the value the config files would set (last one wins)
+sysctl_files() {
+    local d f b; declare -A seen
+    for d in /etc/sysctl.d /run/sysctl.d /usr/local/lib/sysctl.d /usr/lib/sysctl.d /lib/sysctl.d; do
+        for f in "$R$d"/*.conf; do
+            [ -e "$f" ] || continue; b=${f##*/}; [ -n "${seen[$b]:-}" ] || seen[$b]=$f
+        done
+    done
+    for b in $(printf '%s\n' "${!seen[@]}" | sort); do echo "${seen[$b]}"; done
+    [ -f "$R/etc/sysctl.conf" ] && echo "$R/etc/sysctl.conf"
+}
+sysctl_get() {
+    if [ $LIVE = 1 ]; then cat "/proc/sys/${1//.//}" 2>/dev/null; return; fi
+    local k=${1//\//.}
+    sysctl_files | xargs -r cat 2>/dev/null | awk -v k="$k" '
+        { sub(/^[ \t]*-/, ""); split($0, a, "="); key=a[1]; gsub(/[ \t]/, "", key); gsub("/", ".", key) }
+        key == k { v=substr($0, index($0, "=")+1); gsub(/^[ \t]+|[ \t]+$/, "", v); val=v }
+        END { print val }'
+}
+sysctl_is() { local v; v=$(sysctl_get "$1"); [ "$v" = "$2" ] || { echo "$1 = ${v:-unset}, want $2"; return 1; }; }
+
+# mounts
+mnt_opts() {
+    if [ $LIVE = 1 ]; then findmnt -kno OPTIONS "$1" 2>/dev/null
+    else awk -v m="$1" '$1 !~ /^#/ && $2 == m {print $4}' "$R/etc/fstab" | tail -1; fi
+}
+is_mount() { [ -n "$(mnt_opts "$1")" ]; }
+mnt_has() { local o; o=$(mnt_opts "$1"); [[ ,$o, == *,$2,* ]] || { echo "$1 mounted without $2 (${o:-not mounted})"; return 1; }; }
+mount_checks() { # ID-PREFIX MOUNTPOINT OPTS...   (IDs: prefix.2, .3, .4 for the options)
+    local pre=$1 mp=$2 i=2 o; shift 2
+    if ! is_mount "$mp"; then
+        for o; do skip "$pre.$i" "$mp has $o" "not a separate partition (that part is Level 2)"; i=$((i+1)); done
+        return
+    fi
+    for o; do check "$pre.$i" "$mp has $o" mnt_has "$mp" "$o"; i=$((i+1)); done
+}
+
+# key = value config files (pwquality, faillock, journald, login.defs ...), last wins
+conf_get() { # KEY FILE...
+    local k=$1; shift
+    cat "$@" 2>/dev/null | awk -v k="$k" '
+        /^[ \t]*[#;]/ {next}
+        { line=$0; sub(/[ \t]*#.*/, "", line) }
+        match(line, "^[ \t]*" k "[ \t]*(=|[ \t])") { v=substr(line, RLENGTH+1); gsub(/^[ \t=]+|[ \t]+$/, "", v); val=v; found=1 }
+        match(line, "^[ \t]*" k "[ \t]*$") { val="(set)"; found=1 }
+        END { if (found) print val }'
+}
+pwq_files() { echo "$R/etc/security/pwquality.conf"; ls "$R"/etc/security/pwquality.conf.d/*.conf 2>/dev/null; }
+jd_files()  { echo "$R/etc/systemd/journald.conf"; ls "$R"/usr/lib/systemd/journald.conf.d/*.conf "$R"/etc/systemd/journald.conf.d/*.conf 2>/dev/null; }
+num_between() { [[ $1 =~ ^-?[0-9]+$ ]] && (( $1 >= $2 && $1 <= $3 )); }
+
+# sshd effective config (first value wins, includes resolved)
+SSHD_T=''
+sshd_effective() {
+    [ -n "$SSHD_T" ] && return 0
+    if [ $LIVE = 1 ]; then
+        SSHD_T=$(sshd -T 2>&1) || { echo "$SSHD_T"; SSHD_T=''; return 1; }
+    else
+        SSHD_T=$(chroot "$R" /bin/sh -c 'mkdir -p /run/sshd; d=$(mktemp -d) &&
+            ssh-keygen -q -t ed25519 -N "" -f "$d/k" && /usr/sbin/sshd -T -h "$d/k"; rc=$?; rm -rf "$d"; exit $rc' 2>&1) \
+            || { echo "$SSHD_T"; SSHD_T=''; return 1; }
+    fi
+}
+sshd_val() { printf '%s\n' "$SSHD_T" | awk -v k="$1" '$1 == k { $1=""; sub(/^ /, ""); print; exit }'; }
+sshd_is() { local v; v=$(sshd_val "$1"); [ "${v,,}" = "${2,,}" ] || { echo "$1 is '${v}', want '$2'"; return 1; }; }
+sshd_none_of() { # KEY WEAK...
+    local k=$1 v w; shift; v=$(sshd_val "$k")
+    for w; do [[ ,$v, == *,$w,* ]] && { echo "$k allows weak $w"; return 1; }; done; return 0
+}
+
+pam_file() { echo "$R/etc/pam.d/$1"; }
+pam_line() { grep -E "^[[:space:]]*$1[[:space:]].*$2" "$(pam_file "$3")" 2>/dev/null; } # TYPE MODULE FILE
+
+# nftables ruleset: live from the kernel, else the persistent config
+nft_rules() { if [ $LIVE = 1 ]; then nft list ruleset 2>/dev/null; else cat "$R/etc/nftables.conf" 2>/dev/null; fi; }
+
+# ---------- 1 Initial setup ----------------------------------------------------
+mod_disabled() {
+    local m=$1 cf; cf=$(cat "$R"/etc/modprobe.d/*.conf "$R"/usr/lib/modprobe.d/*.conf 2>/dev/null)
+    grep -Eq "^[[:space:]]*install[[:space:]]+${m}[[:space:]]+/(usr/)?bin/(false|true)" <<< "$cf" || { echo "no 'install $m /bin/false'"; return 1; }
+    grep -Eq "^[[:space:]]*blacklist[[:space:]]+${m}\b" <<< "$cf" || { echo "no 'blacklist $m'"; return 1; }
+    if [ $LIVE = 1 ] && [ -d "/sys/module/${m//-/_}" ]; then echo "$m is loaded"; return 1; fi
+}
+i=1; for m in cramfs freevxfs hfs hfsplus jffs2; do check "1.1.1.$i" "$m kernel module disabled" mod_disabled $m; i=$((i+1)); done
+check 1.1.1.9 "usb-storage kernel module disabled" mod_disabled usb-storage
+manual 1.1.1.10 "unused filesystem kernel modules disabled" "review: lsmod"
+
+check 1.1.2.1.1 "/tmp is a separate partition" is_mount /tmp
+mount_checks 1.1.2.1 /tmp nodev nosuid noexec
+check 1.1.2.2.1 "/dev/shm is a separate partition" is_mount /dev/shm
+mount_checks 1.1.2.2 /dev/shm nodev nosuid noexec
+mount_checks 1.1.2.3 /home nodev nosuid
+mount_checks 1.1.2.4 /var nodev nosuid
+mount_checks 1.1.2.5 /var/tmp nodev nosuid noexec
+mount_checks 1.1.2.6 /var/log nodev nosuid noexec
+mount_checks 1.1.2.7 /var/log/audit nodev nosuid noexec
+
+manual 1.2.1.1 "GPG keys for package repositories configured" "review /etc/apt/trusted.gpg.d, /usr/share/keyrings"
+manual 1.2.1.2 "package repositories configured" "review /etc/apt/sources.list*"
+manual 1.2.2.1 "updates and security patches installed" "unattended-upgrades is enabled; review: apt list --upgradable"
+
+check 1.3.1.1 "AppArmor installed" all_installed apparmor apparmor-utils
+grub_cfg=$R/boot/grub/grub.cfg
+grub_apparmor() {
+    [ -r "$grub_cfg" ] || { echo "cannot read /boot/grub/grub.cfg"; return 1; }
+    local bad; bad=$(awk '/^[ \t]*linux[ \t]/ && !/memtest/ && !(/apparmor=1/ && /security=apparmor/)' "$grub_cfg" | head -1)
+    [ -z "$bad" ] || { echo "kernel line without apparmor=1 security=apparmor"; return 1; }
+}
+check 1.3.1.2 "AppArmor enabled in the bootloader" grub_apparmor
+aa_profiles() {
+    local out n; out=$(aa-status 2>&1) || { echo "aa-status failed"; return 1; }
+    n=$(awk '/processes are unconfined but have a profile defined/ {print $1}' <<< "$out")
+    [ "${n:-0}" = 0 ] || { echo "$n processes unconfined despite a profile"; return 1; }
+}
+live_only 1.3.1.3 "AppArmor profiles in enforce or complain mode" && check 1.3.1.3 "AppArmor profiles in enforce or complain mode" aa_profiles
+
+grub_password() {
+    [ -r "$grub_cfg" ] || { echo "cannot read /boot/grub/grub.cfg"; return 1; }
+    grep -Eq '^[[:space:]]*set[[:space:]]+superusers=' "$grub_cfg" && grep -Eq '^[[:space:]]*password_pbkdf2[[:space:]]' "$grub_cfg" \
+        || { echo "no superusers/password_pbkdf2 in grub.cfg"; return 1; }
+}
+check 1.4.1 "bootloader password set" grub_password
+check 1.4.2 "bootloader config permissions" perm /boot/grub/grub.cfg 600
+
+check 1.5.1 "ASLR enabled" sysctl_is kernel.randomize_va_space 2
+ptrace_ok() { local v; v=$(sysctl_get kernel.yama.ptrace_scope); [[ $v =~ ^[123]$ ]] || { echo "kernel.yama.ptrace_scope = ${v:-unset}"; return 1; }; }
+check 1.5.2 "ptrace_scope restricted" ptrace_ok
+core_ok() {
+    cat "$R"/etc/security/limits.conf "$R"/etc/security/limits.d/*.conf 2>/dev/null \
+        | grep -Eq '^[[:space:]]*\*[[:space:]]+hard[[:space:]]+core[[:space:]]+0\b' || { echo "no '* hard core 0'"; return 1; }
+    sysctl_is fs.suid_dumpable 0 || return 1
+    if installed systemd-coredump; then
+        [ "$(conf_get Storage "$R/etc/systemd/coredump.conf" "$R"/etc/systemd/coredump.conf.d/*.conf)" = none ] || { echo "systemd-coredump stores dumps"; return 1; }
+    fi
+}
+check 1.5.3 "core dumps restricted" core_ok
+check 1.5.4 "prelink not installed" not_installed prelink
+check 1.5.5 "automatic error reporting not enabled" not_installed apport
+
+banner_ok() {
+    local f=$R$1; [ -f "$f" ] || return 0
+    grep -Eq '\\[mrsv]' "$f" && { echo "$1 contains \\m \\r \\s or \\v"; return 1; }
+    grep -qi debian "$f" && { echo "$1 names the OS"; return 1; }
+    return 0
+}
+check 1.6.1 "/etc/motd has no OS information" banner_ok /etc/motd
+check 1.6.2 "/etc/issue has no OS information" banner_ok /etc/issue
+check 1.6.3 "/etc/issue.net has no OS information" banner_ok /etc/issue.net
+check 1.6.4 "/etc/motd permissions" perm_if_exists /etc/motd 644
+check 1.6.5 "/etc/issue permissions" perm /etc/issue 644
+check 1.6.6 "/etc/issue.net permissions" perm /etc/issue.net 644
+check 1.7.1 "GDM not installed" not_installed gdm3
+
+# ---------- 2 Services ---------------------------------------------------------
+svc() { check "2.1.$1" "$2 not installed" not_installed "${@:3}"; }
+svc 1  "autofs" autofs
+svc 2  "avahi" avahi-daemon
+svc 3  "DHCP server" isc-dhcp-server kea-dhcp4-server kea-dhcp6-server
+svc 4  "DNS server" bind9
+svc 5  "dnsmasq" dnsmasq
+svc 6  "FTP server" vsftpd proftpd-core pure-ftpd
+svc 7  "LDAP server" slapd
+svc 8  "IMAP/POP3 server" dovecot-imapd dovecot-pop3d
+svc 9  "NFS server" nfs-kernel-server
+svc 10 "NIS server" ypserv
+svc 11 "print server" cups
+svc 12 "rpcbind" rpcbind
+rsync_ok() { installed rsync || return 0; local s; s=$(unit_state rsync.service); [ "$s" = masked ] || { echo "rsync.service is ${s:-?}, want masked"; return 1; }; }
+check 2.1.13 "rsync daemon not in use" rsync_ok
+svc 14 "Samba" samba
+svc 15 "SNMP server" snmpd
+svc 16 "TFTP server" tftpd-hpa
+svc 17 "web proxy" squid
+svc 18 "web server" apache2 nginx
+svc 19 "xinetd" xinetd
+svc 20 "X server" xserver-common
+mta_ok() {
+    local p; for p in exim4-daemon-light exim4-daemon-heavy postfix opensmtpd; do installed "$p" && break; p=''; done
+    [ -z "$p" ] && return 0
+    [ $LIVE = 1 ] || { echo "$p installed: confirm it listens on loopback only"; return 1; }
+    local bad; bad=$(ss -Hlnt 2>/dev/null | awk '{print $4}' | grep -E ':(25|465|587)$' | grep -vE '^(127\.|\[::1\]|::1)' | head -1)
+    [ -z "$bad" ] || { echo "MTA listening on $bad"; return 1; }
+}
+check 2.1.21 "mail transfer agent local-only" mta_ok
+if [ $LIVE = 1 ]; then manual 2.1.22 "only approved services listening" "review: ss -tulpn ($(ss -Htuln 2>/dev/null | wc -l) sockets)"
+else manual 2.1.22 "only approved services listening" "review on the running system: ss -tulpn"; fi
+
+check 2.2.1 "NIS client not installed" not_installed nis
+check 2.2.2 "rsh client not installed" not_installed rsh-client
+check 2.2.3 "talk client not installed" not_installed talk
+check 2.2.4 "telnet client not installed" not_installed telnet inetutils-telnet
+check 2.2.5 "LDAP client not installed" not_installed ldap-utils
+check 2.2.6 "FTP client not installed" not_installed ftp tnftp
+
+one_timed() {
+    local p n=0 l=''; for p in chrony systemd-timesyncd ntp ntpsec openntpd; do installed $p && { n=$((n+1)); l+=" $p"; }; done
+    [ $n = 1 ] || { echo "$n time daemons installed:${l:- none}"; return 1; }
+}
+check 2.3.1.1 "a single time synchronization daemon" one_timed
+if installed chrony; then
+    chrony_src() { cat "$R/etc/chrony/chrony.conf" "$R"/etc/chrony/conf.d/*.conf "$R"/etc/chrony/sources.d/*.sources 2>/dev/null | grep -Eq '^[[:space:]]*(server|pool|sourcedir)[[:space:]]' || { echo "no server/pool configured"; return 1; }; }
+    chrony_user() { local u; u=$(cat "$R/etc/chrony/chrony.conf" "$R"/etc/chrony/conf.d/*.conf 2>/dev/null | awk '$1=="user" {print $2}' | tail -1); [ -z "$u" ] || [ "$u" = _chrony ] || { echo "chronyd runs as $u"; return 1; }; }
+    check 2.3.3.1 "chrony configured with a time source" chrony_src
+    check 2.3.3.2 "chrony runs as _chrony" chrony_user
+    check 2.3.3.3 "chrony enabled" unit_enabled chrony.service
+fi
+
+if installed cron; then
+    check 2.4.1.1 "cron enabled" unit_enabled cron.service
+    check 2.4.1.2 "/etc/crontab permissions" perm /etc/crontab 600
+    i=3; for d in cron.hourly cron.daily cron.weekly cron.monthly cron.d; do check "2.4.1.$i" "/etc/$d permissions" perm /etc/$d 700; i=$((i+1)); done
+    cron_allow() { [ ! -e "$R/etc/cron.deny" ] || { echo "/etc/cron.deny exists"; return 1; }; perm /etc/cron.allow 640 root 'root|crontab'; }
+    check 2.4.1.8 "crontab restricted to authorized users" cron_allow
+else
+    skip 2.4.1 "cron" "not installed"
+fi
+if installed at; then
+    at_allow() { [ ! -e "$R/etc/at.deny" ] || { echo "/etc/at.deny exists"; return 1; }; perm /etc/at.allow 640 root 'root|daemon'; }
+    check 2.4.2.1 "at restricted to authorized users" at_allow
+fi
+
+# ---------- 3 Network ----------------------------------------------------------
+manual 3.1.1 "IPv6 status identified" "IPv6 router advertisements are off (3.3.11); configure IPv6 explicitly if used"
+wireless_ok() { local w; w=$(ls -d /sys/class/net/*/wireless 2>/dev/null | head -1); [ -z "$w" ] || { echo "wireless interface present: $w"; return 1; }; }
+live_only 3.1.2 "wireless interfaces disabled" && check 3.1.2 "wireless interfaces disabled" wireless_ok
+check 3.1.3 "bluetooth not installed" not_installed bluez
+while read -r id key val; do
+    check "$id" "$key = $val" sysctl_is "$key" "$val"
+done <<'SYSCTL'
+3.3.1 net.ipv4.ip_forward 0
+3.3.1 net.ipv6.conf.all.forwarding 0
+3.3.2 net.ipv4.conf.all.send_redirects 0
+3.3.2 net.ipv4.conf.default.send_redirects 0
+3.3.3 net.ipv4.icmp_ignore_bogus_error_responses 1
+3.3.4 net.ipv4.icmp_echo_ignore_broadcasts 1
+3.3.5 net.ipv4.conf.all.accept_redirects 0
+3.3.5 net.ipv4.conf.default.accept_redirects 0
+3.3.5 net.ipv6.conf.all.accept_redirects 0
+3.3.5 net.ipv6.conf.default.accept_redirects 0
+3.3.6 net.ipv4.conf.all.secure_redirects 0
+3.3.6 net.ipv4.conf.default.secure_redirects 0
+3.3.7 net.ipv4.conf.all.rp_filter 1
+3.3.7 net.ipv4.conf.default.rp_filter 1
+3.3.8 net.ipv4.conf.all.accept_source_route 0
+3.3.8 net.ipv4.conf.default.accept_source_route 0
+3.3.8 net.ipv6.conf.all.accept_source_route 0
+3.3.8 net.ipv6.conf.default.accept_source_route 0
+3.3.9 net.ipv4.conf.all.log_martians 1
+3.3.9 net.ipv4.conf.default.log_martians 1
+3.3.10 net.ipv4.tcp_syncookies 1
+3.3.11 net.ipv6.conf.all.accept_ra 0
+3.3.11 net.ipv6.conf.default.accept_ra 0
+SYSCTL
+
+# ---------- 4 Firewall ---------------------------------------------------------
+check 4.1.1 "a single firewall utility" not_installed ufw iptables-persistent firewalld
+check 4.3.1 "nftables installed" all_installed nftables
+nft_table() { nft_rules | grep -Eq '^[[:space:]]*table[[:space:]]' || { echo "no nftables table"; return 1; }; }
+nft_chains() { local h; for h in input forward output; do nft_rules | grep -Eq "hook $h\b" || { echo "no base chain for hook $h"; return 1; }; done; }
+nft_lo() {
+    local r; r=$(nft_rules)
+    grep -Eq 'iif "?lo"? accept' <<< "$r" || { echo "no 'iif lo accept'"; return 1; }
+    grep -Eq 'ip saddr 127\.0\.0\.0/8 .*drop' <<< "$r" || { echo "no drop for 127.0.0.0/8 from non-loopback"; return 1; }
+    grep -Eq 'ip6 saddr ::1 .*drop' <<< "$r" || { echo "no drop for ::1 from non-loopback"; return 1; }
+}
+nft_deny() { local h; for h in "$@"; do nft_rules | grep -Eq "hook $h\b.*policy drop" || { echo "$h chain policy is not drop"; return 1; }; done; }
+check 4.3.4 "nftables table exists" nft_table
+check 4.3.5 "nftables base chains exist" nft_chains
+check 4.3.6 "nftables loopback traffic configured" nft_lo
+manual 4.3.7 "nftables outbound and established connections" "review chain output in /etc/nftables.conf"
+check 4.3.8 "nftables default deny policy (input, forward)" nft_deny input forward
+check 4.3.8/out "nftables default deny policy (output)" nft_deny output
+check 4.3.9 "nftables service enabled" unit_enabled nftables.service
+nft_persist() { grep -Eq '^[[:space:]]*table[[:space:]]' "$R/etc/nftables.conf" 2>/dev/null || { echo "/etc/nftables.conf has no rules"; return 1; }; }
+check 4.3.10 "nftables rules permanent" nft_persist
+
+# ---------- 5 Access control ---------------------------------------------------
+sshd_cfg_perm() { local f; for f in /etc/ssh/sshd_config "$R"/etc/ssh/sshd_config.d/*.conf; do f=${f#"$R"}; [ -e "$R$f" ] || continue; perm "$f" 600 || return 1; done; }
+check 5.1.1 "sshd config permissions" sshd_cfg_perm
+hostkeys() { # 2: private, 3: public
+    local f n=0; for f in "$R"/etc/ssh/ssh_host_*_key; do
+        [ -e "$f" ] || continue; n=$((n+1))
+        if [ "$1" = priv ]; then perm "${f#"$R"}" 600 || perm "${f#"$R"}" 640 root ssh_keys || return 1
+        else perm "${f#"$R"}.pub" 644 || return 1; fi
+    done
+    [ $n -gt 0 ] || [ $LIVE = 0 ] || { echo "no host keys"; return 1; }
+}
+check 5.1.2 "ssh private host key permissions" hostkeys priv
+check 5.1.3 "ssh public host key permissions" hostkeys pub
+if out=$(sshd_effective); then
+    sshd_access() { local k; for k in allowusers allowgroups denyusers denygroups; do [ -n "$(sshd_val $k)" ] && return 0; done; echo "no AllowUsers/AllowGroups/DenyUsers/DenyGroups"; return 1; }
+    sshd_banner() { local v; v=$(sshd_val banner); [ -n "$v" ] && [ "$v" != none ] || { echo "no Banner"; return 1; }; }
+    sshd_alive() { num_between "$(sshd_val clientaliveinterval)" 1 99999 && num_between "$(sshd_val clientalivecountmax)" 1 99999 || { echo "ClientAliveInterval/CountMax not > 0"; return 1; }; }
+    sshd_range() { local v; v=$(sshd_val "$1"); num_between "$v" "$2" "$3" || { echo "$1 is $v, want $2..$3"; return 1; }; }
+    sshd_loglevel() { local v; v=$(sshd_val loglevel); [[ ${v^^} =~ ^(INFO|VERBOSE)$ ]] || { echo "LogLevel is $v"; return 1; }; }
+    sshd_startups() {
+        local v a b c; v=$(sshd_val maxstartups); IFS=: read -r a b c <<< "$v"
+        num_between "${a:-99}" 1 10 && num_between "${b:-99}" 1 30 && num_between "${c:-99}" 1 60 || { echo "MaxStartups is $v, want 10:30:60 or stricter"; return 1; }
+    }
+    check 5.1.4  "sshd access configured" sshd_access
+    check 5.1.5  "sshd Banner configured" sshd_banner
+    check 5.1.6  "sshd Ciphers: no weak ciphers" sshd_none_of ciphers 3des-cbc aes128-cbc aes192-cbc aes256-cbc rijndael-cbc@lysator.liu.se chacha20-poly1305@openssh.com
+    check 5.1.7  "sshd ClientAliveInterval/CountMax" sshd_alive
+    check 5.1.8  "sshd DisableForwarding" sshd_is disableforwarding yes
+    check 5.1.9  "sshd GSSAPIAuthentication disabled" sshd_is gssapiauthentication no
+    check 5.1.10 "sshd HostbasedAuthentication disabled" sshd_is hostbasedauthentication no
+    check 5.1.11 "sshd IgnoreRhosts enabled" sshd_is ignorerhosts yes
+    check 5.1.12 "sshd KexAlgorithms: no weak kex" sshd_none_of kexalgorithms diffie-hellman-group1-sha1 diffie-hellman-group14-sha1 diffie-hellman-group-exchange-sha1
+    check 5.1.13 "sshd LoginGraceTime 1-60s" sshd_range logingracetime 1 60
+    check 5.1.14 "sshd LogLevel INFO or VERBOSE" sshd_loglevel
+    check 5.1.15 "sshd MACs: no weak MACs" sshd_none_of macs hmac-md5 hmac-md5-96 hmac-ripemd160 hmac-sha1 hmac-sha1-96 umac-64@openssh.com hmac-md5-etm@openssh.com hmac-md5-96-etm@openssh.com hmac-ripemd160-etm@openssh.com hmac-sha1-etm@openssh.com hmac-sha1-96-etm@openssh.com umac-64-etm@openssh.com
+    check 5.1.16 "sshd MaxAuthTries <= 4" sshd_range maxauthtries 1 4
+    check 5.1.17 "sshd MaxSessions <= 10" sshd_range maxsessions 1 10
+    check 5.1.18 "sshd MaxStartups 10:30:60 or stricter" sshd_startups
+    check 5.1.19 "sshd PermitEmptyPasswords disabled" sshd_is permitemptypasswords no
+    check 5.1.20 "sshd PermitRootLogin disabled" sshd_is permitrootlogin no
+    check 5.1.21 "sshd PermitUserEnvironment disabled" sshd_is permituserenvironment no
+    check 5.1.22 "sshd UsePAM enabled" sshd_is usepam yes
+else
+    fail 5.1.4-22 "sshd configuration" "sshd -T failed: $(head -1 <<< "$out")"
+fi
+
+check 5.2.1 "sudo installed" all_installed sudo
+sudoers_all() { cat "$R/etc/sudoers" "$R"/etc/sudoers.d/* 2>/dev/null | grep -v '^[[:space:]]*#'; }
+sudo_pty() { sudoers_all | grep -Eq '^[[:space:]]*Defaults([[:space:]]|,).*\buse_pty\b' || { echo "no Defaults use_pty"; return 1; }; }
+sudo_log() { sudoers_all | grep -Eq '^[[:space:]]*Defaults([[:space:]]|,).*\blogfile=' || { echo "no Defaults logfile="; return 1; }; }
+sudo_reauth() { ! sudoers_all | grep -Eq '!authenticate' || { echo "!authenticate used"; return 1; }; }
+sudo_timeout() {
+    local t; t=$(sudoers_all | grep -oE 'timestamp_timeout=-?[0-9]+' | tail -1 | cut -d= -f2)
+    [ -z "$t" ] || num_between "$t" 0 15 || { echo "timestamp_timeout=$t"; return 1; }
+}
+su_restricted() {
+    local g; g=$(grep -E '^[[:space:]]*auth[[:space:]]+(required|requisite)[[:space:]]+pam_wheel\.so.*use_uid.*group=' "$(pam_file su)" | grep -oE 'group=[^[:space:]]+' | cut -d= -f2 | head -1)
+    [ -n "$g" ] || { echo "/etc/pam.d/su has no pam_wheel.so use_uid group=..."; return 1; }
+    local members; members=$(awk -F: -v g="$g" '$1==g {print $4}' "$R/etc/group")
+    [ -z "$members" ] || { echo "group $g has members: $members"; return 1; }
+}
+check 5.2.2 "sudo uses a pty" sudo_pty
+check 5.2.3 "sudo log file" sudo_log
+manual 5.2.4 "users must provide a password for sudo" "Level 2: the single admin uses NOPASSWD (key-only accounts have no password)"
+check 5.2.5 "sudo re-authentication not disabled globally" sudo_reauth
+check 5.2.6 "sudo timestamp_timeout <= 15 min" sudo_timeout
+check 5.2.7 "su restricted to an empty group" su_restricted
+
+check 5.3.1.1 "libpam-runtime installed" all_installed libpam-runtime
+check 5.3.1.2 "libpam-modules installed" all_installed libpam-modules
+check 5.3.1.3 "libpam-pwquality installed" all_installed libpam-pwquality
+in_pam() { local f; for f in "${@:2}"; do grep -Eq "^[^#]*\b$1\.so\b" "$(pam_file "$f")" 2>/dev/null || { echo "$1 not in $f"; return 1; }; done; }
+check 5.3.2.1 "pam_unix enabled" in_pam pam_unix common-auth common-account common-password common-session
+check 5.3.2.2 "pam_faillock enabled" in_pam pam_faillock common-auth common-account
+check 5.3.2.3 "pam_pwquality enabled" in_pam pam_pwquality common-password
+check 5.3.2.4 "pam_pwhistory enabled" in_pam pam_pwhistory common-password
+fl_conf="$R/etc/security/faillock.conf"
+fl_deny() { local v; v=$(conf_get deny "$fl_conf"); num_between "${v:-3}" 1 5 || { echo "deny = $v"; return 1; }; ! grep -Eq 'pam_faillock\.so.*\bdeny=([6-9]|[1-9][0-9])' "$(pam_file common-auth)" || { echo "pam line sets deny > 5"; return 1; }; }
+fl_unlock() { local v; v=$(conf_get unlock_time "$fl_conf"); v=${v:-600}; [ "$v" = 0 ] || num_between "$v" 900 999999 || { echo "unlock_time = $v"; return 1; }; }
+check 5.3.3.1.1 "faillock deny <= 5" fl_deny
+check 5.3.3.1.2 "faillock unlock_time 0 or >= 900" fl_unlock
+# shellcheck disable=SC2046 # pwq_files lists files, split on purpose
+pwq() { conf_get "$1" $(pwq_files); }
+pwq_range() { local v; v=$(pwq "$1"); num_between "${v:-$4}" "$2" "$3" || { echo "$1 = ${v:-default $4}"; return 1; }; }
+pwq_complex() { local v; v=$(pwq minclass); num_between "${v:-0}" 4 4 || { echo "minclass = ${v:-0}, want 4"; return 1; }; }
+pwq_nonzero() { local v; v=$(pwq "$1"); [ "${v:-1}" != 0 ] || { echo "$1 = 0"; return 1; }; }
+check 5.3.3.2.1 "pwquality difok >= 2" pwq_range difok 2 999 1
+check 5.3.3.2.2 "pwquality minlen >= 14" pwq_range minlen 14 999 8
+check 5.3.3.2.3 "pwquality complexity (minclass 4)" pwq_complex
+check 5.3.3.2.4 "pwquality maxrepeat 1-3" pwq_range maxrepeat 1 3 0
+check 5.3.3.2.5 "pwquality maxsequence 1-3" pwq_range maxsequence 1 3 0
+check 5.3.3.2.6 "pwquality dictcheck enabled" pwq_nonzero dictcheck
+check 5.3.3.2.7 "pwquality enforcing" pwq_nonzero enforcing
+pwh_line() { grep -E '^[^#]*pam_pwhistory\.so' "$(pam_file common-password)" 2>/dev/null; }
+pwh_remember() { local r; r=$(pwh_line | grep -oE 'remember=[0-9]+' | cut -d= -f2); num_between "${r:-0}" 24 9999 || { echo "remember=${r:-unset}"; return 1; }; }
+pwh_opt() { pwh_line | grep -qw "$1" || { echo "pam_pwhistory without $1"; return 1; }; }
+check 5.3.3.3.1 "pwhistory remember >= 24" pwh_remember
+check 5.3.3.3.2 "pwhistory enforce_for_root" pwh_opt enforce_for_root
+check 5.3.3.3.3 "pwhistory use_authtok" pwh_opt use_authtok
+unix_lines() { cat "$(pam_file common-auth)" "$(pam_file common-account)" "$(pam_file common-password)" "$(pam_file common-session)" 2>/dev/null | grep -E '^[^#]*pam_unix\.so'; }
+unix_no() { ! unix_lines | grep -Eq "\b$1" || { echo "pam_unix uses $1"; return 1; }; }
+unix_pw() { grep -E '^[^#]*password.*pam_unix\.so' "$(pam_file common-password)" 2>/dev/null | grep -Eq "$1" || { echo "pam_unix password line lacks $2"; return 1; }; }
+check 5.3.3.4.1 "pam_unix without nullok" unix_no nullok
+check 5.3.3.4.2 "pam_unix without remember" unix_no remember=
+check 5.3.3.4.3 "pam_unix strong hashing" unix_pw '\b(yescrypt|sha512)\b' "yescrypt/sha512"
+check 5.3.3.4.4 "pam_unix use_authtok" unix_pw '\buse_authtok\b' use_authtok
+
+defs="$R/etc/login.defs"
+users_with_pw() { awk -F: '$2 ~ /^\$/' "$R/etc/shadow"; }
+max_days() {
+    local v; v=$(conf_get PASS_MAX_DAYS "$defs"); num_between "$v" 1 365 || { echo "PASS_MAX_DAYS $v"; return 1; }
+    local bad; bad=$(users_with_pw | awk -F: '$5 == "" || $5 > 365 || $5 < 1 {print $1; exit}'); [ -z "$bad" ] || { echo "user $bad max days > 365"; return 1; }
+}
+warn_age() { local v; v=$(conf_get PASS_WARN_AGE "$defs"); num_between "$v" 7 999 || { echo "PASS_WARN_AGE $v"; return 1; }; }
+enc_method() { local v; v=$(conf_get ENCRYPT_METHOD "$defs"); [[ ${v^^} =~ ^(SHA512|YESCRYPT)$ ]] || { echo "ENCRYPT_METHOD $v"; return 1; }; }
+inactive() {
+    local v; v=$(awk -F= '$1=="INACTIVE" {print $2}' "$R/etc/default/useradd" 2>/dev/null); num_between "${v:--1}" 0 45 || { echo "useradd INACTIVE=${v:--1}"; return 1; }
+    local bad; bad=$(users_with_pw | awk -F: '$7 == "" || $7 > 45 || $7 < 0 {print $1; exit}'); [ -z "$bad" ] || { echo "user $bad inactive > 45"; return 1; }
+}
+pw_past() { local today bad; today=$(( $(date +%s) / 86400 )); bad=$(users_with_pw | awk -F: -v t="$today" '$3 > t {print $1; exit}'); [ -z "$bad" ] || { echo "user $bad changed password in the future"; return 1; }; }
+check 5.4.1.1 "password expiration <= 365 days" max_days
+manual 5.4.1.2 "minimum password days" "Level 2"
+check 5.4.1.3 "password expiration warning >= 7 days" warn_age
+check 5.4.1.4 "strong password hashing algorithm" enc_method
+check 5.4.1.5 "inactive password lock <= 45 days" inactive
+check 5.4.1.6 "all users' last password change in the past" pw_past
+
+only_root_uid0() { local u; u=$(awk -F: '$3 == 0 && $1 != "root" {print $1}' "$R/etc/passwd"); [ -z "$u" ] || { echo "UID 0: $u"; return 1; }; }
+only_root_gid0() { local u; u=$(awk -F: '$4 == 0 && $1 !~ /^(root|sync|shutdown|halt|operator)$/ {print $1}' "$R/etc/passwd"); [ -z "$u" ] || { echo "primary GID 0: $u"; return 1; }; }
+group_root_only() { local g; g=$(awk -F: '$3 == 0 && $1 != "root" {print $1}' "$R/etc/group"); [ -z "$g" ] || { echo "GID 0 group: $g"; return 1; }; }
+root_access() { local f; f=$(awk -F: '$1=="root" {print $2}' "$R/etc/shadow"); [[ $f == '!'* || $f == '*'* || $f == '$'* ]] || { echo "root has no password and is not locked"; return 1; }; }
+root_path() {
+    local d P=$CALLER_PATH; IFS=: read -ra ds <<< "$P"
+    [[ $P != *::* && $P != :* && $P != *: ]] || { echo "empty entry in PATH"; return 1; }
+    for d in "${ds[@]}"; do
+        [ "$d" != . ] || { echo ". in PATH"; return 1; }
+        [ -d "$d" ] || continue
+        perm "$d" 755 >/dev/null || { echo "$d in PATH is not root-owned 755"; return 1; }
+    done
+}
+umask_ok() { local u=$((8#$1)); (( (u & 8#027) == 8#027 )); }
+root_umask() {
+    local f u; for f in /root/.bash_profile /root/.bashrc /root/.profile; do
+        [ -f "$R$f" ] || continue
+        while read -r u; do umask_ok "$u" || { echo "$f sets umask $u"; return 1; }; done < <(grep -oE '^[[:space:]]*umask[[:space:]]+[0-7]+' "$R$f" | awk '{print $2}')
+    done
+}
+uid_min=$(conf_get UID_MIN "$defs"); uid_min=${uid_min:-1000}
+valid_shells() { grep -Ev '^[[:space:]]*(#|$)' "$R/etc/shells" | grep -v nologin; }
+sys_no_shell() {
+    local bad; bad=$(awk -F: -v m="$uid_min" -v shells="$(valid_shells | tr '\n' ' ')" '
+        BEGIN { n=split(shells, s, " "); for (i=1;i<=n;i++) ok[s[i]]=1 }
+        $3 < m && $1 !~ /^(root|halt|sync|shutdown|nfsnobody)$/ && ($7 in ok) {print $1; exit}' "$R/etc/passwd")
+    [ -z "$bad" ] || { echo "system account $bad has a login shell"; return 1; }
+}
+noshell_locked() {
+    local u; for u in $(awk -F: -v shells="$(valid_shells | tr '\n' ' ')" '
+        BEGIN { n=split(shells, s, " "); for (i=1;i<=n;i++) ok[s[i]]=1 }
+        $1 != "root" && !($7 in ok) {print $1}' "$R/etc/passwd"); do
+        local f; f=$(awk -F: -v u="$u" '$1==u {print $2}' "$R/etc/shadow")
+        [[ $f == '!'* || $f == '*'* ]] || { echo "$u has no login shell but is not locked"; return 1; }
+    done
+}
+check 5.4.2.1 "root is the only UID 0 account" only_root_uid0
+check 5.4.2.2 "root is the only GID 0 account" only_root_gid0
+check 5.4.2.3 "group root is the only GID 0 group" group_root_only
+check 5.4.2.4 "root account access controlled" root_access
+live_only 5.4.2.5 "root PATH integrity" && check 5.4.2.5 "root PATH integrity" root_path
+check 5.4.2.6 "root umask" root_umask
+check 5.4.2.7 "system accounts have no login shell" sys_no_shell
+check 5.4.2.8 "accounts without a login shell are locked" noshell_locked
+nologin_shells() { ! grep -Eq '/nologin\b' "$R/etc/shells" || { echo "nologin listed in /etc/shells"; return 1; }; }
+profile_files() { ls "$R"/etc/profile "$R"/etc/profile.d/*.sh "$R"/etc/bash.bashrc 2>/dev/null; }
+tmout_ok() {
+    local all; all=$(profile_files | xargs -r cat)
+    local v; v=$(grep -oE '^[^#]*\bTMOUT=[0-9]+' <<< "$all" | grep -oE '[0-9]+$' | tail -1)
+    num_between "${v:-0}" 1 900 || { echo "TMOUT=${v:-unset}"; return 1; }
+    grep -Eq '^[^#]*\breadonly[[:space:]]+TMOUT\b' <<< "$all" || { echo "TMOUT not readonly"; return 1; }
+    grep -Eq '^[^#]*\bexport[[:space:]]+TMOUT\b' <<< "$all" || { echo "TMOUT not exported"; return 1; }
+}
+default_umask() {
+    local v; v=$(conf_get UMASK "$defs"); umask_ok "${v:-022}" || { echo "login.defs UMASK ${v:-unset}"; return 1; }
+    local f u; for f in $(profile_files); do
+        while read -r u; do umask_ok "$u" || { echo "${f#"$R"} sets umask $u"; return 1; }; done < <(grep -oE '^[[:space:]]*umask[[:space:]]+[0-7]+' "$f" | awk '{print $2}')
+    done
+}
+check 5.4.3.1 "nologin not in /etc/shells" nologin_shells
+check 5.4.3.2 "shell timeout configured" tmout_ok
+check 5.4.3.3 "default user umask 027" default_umask
+
+# ---------- 6 Logging ----------------------------------------------------------
+live_only 6.1.1.1 "journald active" && check 6.1.1.1 "journald active" sh -c 'systemctl is-active -q systemd-journald.service || { echo inactive; exit 1; }'
+check 6.1.1.4 "only one logging system (journald)" not_installed rsyslog syslog-ng
+check 6.1.2.1.1 "systemd-journal-remote installed" all_installed systemd-journal-remote
+upload_url=$(conf_get URL "$R/etc/systemd/journal-upload.conf" "$R"/etc/systemd/journal-upload.conf.d/*.conf)
+if [ -n "$upload_url" ]; then
+    pass 6.1.2.1.2 "journal upload configured ($upload_url)"
+    check 6.1.2.1.3 "journal upload enabled" unit_enabled systemd-journal-upload.service
+else
+    manual 6.1.2.1.2 "journal upload configured" "set JOURNAL_UPLOAD_URL in class/HARDEN.var (needs a log server)"
+    manual 6.1.2.1.3 "journal upload enabled" "follows 6.1.2.1.2"
+fi
+remote_off() { unit_off systemd-journal-remote.socket && unit_off systemd-journal-remote.service; }
+check 6.1.2.1.4 "journald not receiving remote logs" remote_off
+# shellcheck disable=SC2046 # jd_files lists files, split on purpose
+jd_is() { local v; v=$(conf_get "$1" $(jd_files)); [ "${v,,}" = "${2,,}" ] || { echo "$1=${v:-default}, want $2"; return 1; }; }
+check 6.1.2.2 "journald ForwardToSyslog=no" jd_is ForwardToSyslog no
+check 6.1.2.3 "journald Compress=yes" jd_is Compress yes
+check 6.1.2.4 "journald Storage=persistent" jd_is Storage persistent
+log_perms() {
+    local f m b
+    while read -r m f; do
+        b=${f##*/}
+        case $b in lastlog*|wtmp*|btmp*) max=664 ;; *) max=640 ;; esac
+        (( (8#$m & ~8#$max) == 0 )) || { echo "${f#"$R"} mode $m > $max"; return 1; }
+    done < <(find "$R/var/log" -type f -printf '%m %p\n' 2>/dev/null)
+}
+check 6.1.4.1 "log file permissions" log_perms
+
+check 6.3.1 "AIDE installed" all_installed aide aide-common
+aide_timer() { unit_enabled dailyaidecheck.timer || return 1; [ $LIVE = 0 ] || [ -f /var/lib/aide/aide.db ] || { echo "AIDE database not initialized yet (aide-firstboot-init.service)"; return 1; }; }
+check 6.3.2 "filesystem integrity regularly checked" aide_timer
+aide_tools() {
+    local t cfg; cfg=$(cat "$R/etc/aide/aide.conf" "$R"/etc/aide/aide.conf.d/* 2>/dev/null)
+    for t in auditctl auditd ausearch aureport autrace augenrules; do
+        [ -e "$R/usr/sbin/$t" ] || [ -e "$R/sbin/$t" ] || continue
+        grep -Eq "^[[:space:]]*(/usr)?/sbin/${t}[[:space:]].*sha512" <<< "$cfg" || { echo "$t not protected by AIDE"; return 1; }
+    done
+}
+check 6.3.3 "audit tools protected by AIDE" aide_tools
+
+# ---------- 7 System maintenance -----------------------------------------------
+check 7.1.1  "/etc/passwd permissions" perm /etc/passwd 644
+check 7.1.2  "/etc/passwd- permissions" perm_if_exists /etc/passwd- 644
+check 7.1.3  "/etc/group permissions" perm /etc/group 644
+check 7.1.4  "/etc/group- permissions" perm_if_exists /etc/group- 644
+check 7.1.5  "/etc/shadow permissions" perm /etc/shadow 640 root 'root|shadow'
+check 7.1.6  "/etc/shadow- permissions" perm_if_exists /etc/shadow- 640 root 'root|shadow'
+check 7.1.7  "/etc/gshadow permissions" perm /etc/gshadow 640 root 'root|shadow'
+check 7.1.8  "/etc/gshadow- permissions" perm_if_exists /etc/gshadow- 640 root 'root|shadow'
+check 7.1.9  "/etc/shells permissions" perm /etc/shells 644
+check 7.1.10 "/etc/security/opasswd permissions" perm_if_exists /etc/security/opasswd 600
+
+fs_find() { # find over local filesystems, skipping pseudo filesystems
+    find "$R/" \( -path "$R/proc" -o -path "$R/sys" -o -path "$R/dev" -o -path "$R/run" \
+        -o -fstype nfs -o -fstype nfs4 -o -fstype cifs -o -fstype proc -o -fstype sysfs \) -prune -o "$@" 2>/dev/null
+}
+ww_ok() {
+    local f; f=$(fs_find -type f -perm -0002 -print | head -1); [ -z "$f" ] && f=$(fs_find -type d -perm -0002 ! -perm -1000 -print | head -1)
+    [ -z "$f" ] || { echo "world-writable without sticky bit: ${f#"$R"}"; return 1; }
+}
+unowned_ok() {
+    local f
+    f=$(fs_find -printf '%U %G %p\n' | awk -v pw="$R/etc/passwd" -v gr="$R/etc/group" -v r="$R" '
+        BEGIN { FS=":"; while ((getline < pw) > 0) u[$3]=1; while ((getline < gr) > 0) g[$3]=1; FS=" " }
+        !($1 in u) || !($2 in g) { sub("^" r, "", $3); print $3; exit }')
+    [ -z "$f" ] || { echo "unowned file: $f"; return 1; }
+}
+check 7.1.11 "world-writable files and directories secured" ww_ok
+check 7.1.12 "no files without an owner or group" unowned_ok
+manual 7.1.13 "SUID/SGID files reviewed" "$(fs_find -type f \( -perm -4000 -o -perm -2000 \) -print | wc -l) files; review: find / -xdev -perm /6000 -type f"
+
+shadowed() { local u; u=$(awk -F: '$2 != "x" {print $1; exit}' "$R/etc/passwd"); [ -z "$u" ] || { echo "$u has a password in /etc/passwd"; return 1; }; }
+no_empty_pw() { local u; u=$(awk -F: '$2 == "" {print $1; exit}' "$R/etc/shadow"); [ -z "$u" ] || { echo "$u has an empty password"; return 1; }; }
+groups_exist() { local g; g=$(awk -F: 'NR==FNR {g[$3]=1; next} !($4 in g) {print $1; exit}' "$R/etc/group" "$R/etc/passwd"); [ -z "$g" ] || { echo "$g's primary group does not exist"; return 1; }; }
+shadow_empty() {
+    local m sg; sg=$(gid_of shadow); m=$(awk -F: '$1=="shadow" {print $4}' "$R/etc/group")
+    [ -z "$m" ] || { echo "group shadow has members: $m"; return 1; }
+    [ -z "$sg" ] || [ -z "$(awk -F: -v g="$sg" '$4==g' "$R/etc/passwd")" ] || { echo "a user has primary group shadow"; return 1; }
+}
+no_dups() { local d; d=$(cut -d: -f"$2" "$R/etc/$1" | sort | uniq -d | head -1); [ -z "$d" ] || { echo "duplicate in /etc/$1: $d"; return 1; }; }
+interactive_users() { awk -F: -v shells="$(valid_shells | tr '\n' ' ')" -v m="$uid_min" '
+    BEGIN { n=split(shells, s, " "); for (i=1;i<=n;i++) ok[s[i]]=1 } ($7 in ok) && ($3 >= m || $1 == "root") {print $1":"$3":"$6}' "$R/etc/passwd"; }
+homes_ok() {
+    local u uid h m o; while IFS=: read -r u uid h; do
+        [ -d "$R$h" ] || { echo "$u home $h missing"; return 1; }
+        read -r m o < <(stat -c '%a %u' "$R$h")
+        [ "$o" = "$uid" ] || { echo "$h not owned by $u"; return 1; }
+        (( (8#$m & ~8#750) == 0 )) || { echo "$h mode $m > 750"; return 1; }
+    done < <(interactive_users)
+}
+dotfiles_ok() {
+    local u uid h f m; while IFS=: read -r u uid h; do
+        for f in "$R$h"/.forward "$R$h"/.rhosts; do [ ! -e "$f" ] || { echo "${f#"$R"} exists"; return 1; }; done
+        [ ! -e "$R$h/.netrc" ] || perm "$h/.netrc" 600 "$u" "$(id -gn "$u" 2>/dev/null || echo "$u")" >/dev/null || { echo "$h/.netrc too open"; return 1; }
+        [ ! -e "$R$h/.bash_history" ] || (( (8#$(stat -c %a "$R$h/.bash_history") & ~8#600) == 0 )) || { echo "$h/.bash_history mode > 600"; return 1; }
+        for f in "$R$h"/.[!.]*; do
+            [ -f "$f" ] || continue; m=$(stat -c %a "$f")
+            (( (8#$m & 8#022) == 0 )) || { echo "${f#"$R"} is group/world-writable"; return 1; }
+        done
+    done < <(interactive_users)
+}
+check 7.2.1 "accounts use shadowed passwords" shadowed
+check 7.2.2 "no empty password fields" no_empty_pw
+check 7.2.3 "groups in /etc/passwd exist" groups_exist
+check 7.2.4 "shadow group is empty" shadow_empty
+check 7.2.5 "no duplicate UIDs" no_dups passwd 3
+check 7.2.6 "no duplicate GIDs" no_dups group 3
+check 7.2.7 "no duplicate user names" no_dups passwd 1
+check 7.2.8 "no duplicate group names" no_dups group 1
+check 7.2.9 "interactive users' home directories" homes_ok
+check 7.2.10 "interactive users' dot files" dotfiles_ok
+
+echo "== CIS Debian Level 1 Server: $np pass, $nf fail, $nx excepted, $ns skip, $nm manual ($( [ $LIVE = 1 ] && echo "running system" || echo "image $R"))"
+[ $nf = 0 ]

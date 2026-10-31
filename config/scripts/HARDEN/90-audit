@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# Run lynis against the freshly built system and save the report in the FAI logs.
+# Informational only: it never fails the build. To gate on a score, compare
+# $index against a threshold and set error=1.
+
+ifclass HARDEN || exit 0
+[ -x $target/usr/sbin/lynis ] || exit 0
+
+$ROOTCMD lynis audit system --quick --no-colors --no-log \
+    > $LOGDIR/lynis.log 2>&1 || true
+
+index=$(grep -oP 'Hardening index : \K[0-9]+' $LOGDIR/lynis.log || echo '?')
+echo "lynis hardening index: $index (full report: $LOGDIR/lynis.log)"
+rm -f $target/var/log/lynis*.log $target/var/log/lynis-report.dat
+
+exit 0

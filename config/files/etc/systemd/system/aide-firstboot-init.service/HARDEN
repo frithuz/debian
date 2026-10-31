@@ -1,0 +1,16 @@
+# Managed by FAI (class HARDEN). CIS 6.3: build the AIDE baseline once, on first boot,
+# after cloud-init has configured the machine (so its changes aren't reported as drift).
+[Unit]
+Description=Initialize AIDE database on first boot
+ConditionPathExists=!/var/lib/aide/aide.db
+After=cloud-final.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/sbin/aideinit --yes --force
+Nice=19
+UMask=0027
+IOSchedulingClass=idle
+
+[Install]
+WantedBy=multi-user.target

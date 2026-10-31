@@ -1,0 +1,23 @@
+# Physical server, UEFI, GPT + LVM, CIS-style separate mounts.
+# WIPES disk1 (the first disk FAI finds). Needs >= ~22G.
+#
+# The VG is deliberately not filled: grow LVs later with
+#   lvextend -r -L +10G vg0/var
+#
+# p=<partlabel> <mountpoint> <size> <fs type> <mount options> <misc options>
+
+disk_config disk1 disklabel:gpt bootable:1 fstabkey:uuid align-at:1M
+
+p=efi    /boot/efi 512M  vfat  rw,umask=0077
+p=boot   /boot     1G    ext4  rw,noatime,nodev,nosuid
+p=system -         20G-  -     -
+
+disk_config lvm fstabkey:uuid
+
+vg vg0 disk1.3
+vg0-root   /               6G   ext4  rw,noatime,errors=remount-ro
+vg0-var    /var            4G   ext4  rw,noatime,nodev,nosuid
+vg0-log    /var/log        2G   ext4  rw,noatime,nodev,nosuid,noexec
+vg0-audit  /var/log/audit  1G   ext4  rw,noatime,nodev,nosuid,noexec
+vg0-home   /home           1G   ext4  rw,noatime,nodev,nosuid
+vg0-tmp    /tmp            2G   ext4  rw,noatime,nodev,nosuid,noexec

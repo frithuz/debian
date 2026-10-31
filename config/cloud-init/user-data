@@ -1,0 +1,21 @@
+#cloud-config
+# The ONE user-data for every machine:
+#   - clouds:      pass this file as the instance's "user data"
+#   - metal:       baked into each install as a NoCloud seed (scripts/METAL/20-cloud-init-seed)
+#   - make test-*: used as-is for the QEMU test VMs
+#
+# Configure here; don't install. Package lists live in package_config/ so every
+# machine gets the same set. `make check` rejects packages:/package_upgrade: here.
+#
+# The default user is 'jonathan' (files/etc/cloud/cloud.cfg.d/90-fai-defaults.cfg/SERVER).
+
+# On first boot, fetch the public keys of GitHub user 'garbee' (https://github.com/garbee.keys)
+# into ~jonathan/.ssh/authorized_keys. Needs network access to api.github.com at first boot.
+# Keys added to/removed from GitHub later are NOT synced; rerun `ssh-import-id gh:garbee`
+# (or edit authorized_keys) for that.
+ssh_import_id:
+  - gh:garbee
+
+# Optional extra keys that don't depend on GitHub being reachable at first boot:
+# ssh_authorized_keys:
+#   - ssh-ed25519 AAAA... jonathan@laptop

@@ -1,0 +1,11 @@
+# CIS Debian Level 1 Server settings that are site decisions.
+
+# 1.4.1 bootloader password: deliberately NOT a variable here. FAI writes every
+# variable to variables.log (logs end up on the machine and in CI artifacts), and this
+# file is public. Put the hash in config/secrets/grub-password.hash instead (gitignored);
+# see README "Setting the GRUB password". Without that file each build gets a random
+# password nobody knows.
+
+# 6.1.2.1.2/3 ship the journal to a central log server, e.g. https://logs.example.com:19532
+# Empty: upload is left unconfigured and `cis-check` reports it as MANUAL.
+JOURNAL_UPLOAD_URL=''

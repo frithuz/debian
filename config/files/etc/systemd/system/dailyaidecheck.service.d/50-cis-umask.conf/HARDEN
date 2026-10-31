@@ -1,0 +1,3 @@
+# Managed by FAI (class HARDEN). CIS 6.1.4.1: logs written by this service are not world-readable.
+[Service]
+UMask=0027

@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# CIS 5.3: faillock, pwquality, pwhistory, and no nullok, via pam-auth-update profiles.
+
+error=0; trap 'error=$(($?>$error?$?:$error))' ERR # save maximum error code
+
+# Debian's "unix" profile has nullok (5.3.3.4.1). Divert the package's copy out of
+# pam-configs so upgrades of libpam-runtime can't put nullok back, and install ours.
+if [ -z "$($ROOTCMD dpkg-divert --list /usr/share/pam-configs/unix)" ]; then
+    mkdir -p $target/usr/share/pam-configs.debian
+    $ROOTCMD dpkg-divert --local --rename --divert /usr/share/pam-configs.debian/unix \
+        --add /usr/share/pam-configs/unix
+fi
+sed -E 's/[[:space:]]+nullok\b//' $target/usr/share/pam-configs.debian/unix > $target/usr/share/pam-configs/unix
+
+fcopy -M /usr/share/pam-configs/faillock /usr/share/pam-configs/faillock_notify /usr/share/pam-configs/pwhistory
+fcopy -M /etc/security/pwquality.conf.d/50-cis.conf
+
+ainsl /etc/security/faillock.conf 'deny = 5'                 # 5.3.3.1.1
+ainsl /etc/security/faillock.conf 'unlock_time = 900'        # 5.3.3.1.2
+
+DEBIAN_FRONTEND=noninteractive $ROOTCMD pam-auth-update --enable unix faillock faillock_notify pwquality pwhistory
+
+for m in pam_faillock pam_pwquality pam_pwhistory pam_unix; do
+    grep -q "$m" $target/etc/pam.d/common-auth $target/etc/pam.d/common-password \
+        || { echo "ERROR: $m missing from PAM stack" >&2; error=1; }
+done
+! grep -q nullok $target/etc/pam.d/common-auth || { echo "ERROR: nullok still in common-auth" >&2; error=1; }
+
+# 5.2.7 su only for members of an (empty) group
+$ROOTCMD groupadd -f sugroup
+grep -q 'pam_wheel.so.*group=sugroup' $target/etc/pam.d/su || \
+    fai-sed '/^auth\s\+sufficient\s\+pam_rootok.so/a auth       required   pam_wheel.so use_uid group=sugroup' /etc/pam.d/su
+grep -q 'group=sugroup' $target/etc/pam.d/su || { echo "ERROR: pam_wheel not added to /etc/pam.d/su" >&2; error=1; }
+
+exit $error

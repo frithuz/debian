@@ -1,0 +1,15 @@
+# Baseline for every server, cloud or metal.
+# Add your own metapackage here once you have an apt repo, e.g. `mycorp-base`.
+PACKAGES install-norec
+ca-certificates
+curl
+gnupg
+chrony
+vim-tiny
+htop
+jq
+tmux
+lsof
+bind9-dnsutils
+cloud-init                 # configures every machine on first boot, cloud or metal
+ssh-import-id              # cloud-init uses it to fetch SSH keys from GitHub (user-data: ssh_import_id)

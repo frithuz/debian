@@ -1,0 +1,52 @@
+# Managed by FAI (class HARDEN). CIS 1.5 (process hardening) and 3.3 (network parameters).
+# 1.5.1
+kernel.randomize_va_space = 2
+# 1.5.2
+kernel.yama.ptrace_scope = 1
+# 1.5.3
+fs.suid_dumpable = 0
+
+# 3.3.1
+net.ipv4.ip_forward = 0
+net.ipv6.conf.all.forwarding = 0
+# 3.3.2
+net.ipv4.conf.all.send_redirects = 0
+net.ipv4.conf.default.send_redirects = 0
+# 3.3.3
+net.ipv4.icmp_ignore_bogus_error_responses = 1
+# 3.3.4
+net.ipv4.icmp_echo_ignore_broadcasts = 1
+# 3.3.5
+net.ipv4.conf.all.accept_redirects = 0
+net.ipv4.conf.default.accept_redirects = 0
+net.ipv6.conf.all.accept_redirects = 0
+net.ipv6.conf.default.accept_redirects = 0
+# 3.3.6
+net.ipv4.conf.all.secure_redirects = 0
+net.ipv4.conf.default.secure_redirects = 0
+# 3.3.7
+net.ipv4.conf.all.rp_filter = 1
+net.ipv4.conf.default.rp_filter = 1
+# 3.3.8
+net.ipv4.conf.all.accept_source_route = 0
+net.ipv4.conf.default.accept_source_route = 0
+net.ipv6.conf.all.accept_source_route = 0
+net.ipv6.conf.default.accept_source_route = 0
+# 3.3.9
+net.ipv4.conf.all.log_martians = 1
+net.ipv4.conf.default.log_martians = 1
+# 3.3.10
+net.ipv4.tcp_syncookies = 1
+# 3.3.11 (IPv6 SLAAC off; configure IPv6 statically or via DHCPv6)
+net.ipv6.conf.all.accept_ra = 0
+net.ipv6.conf.default.accept_ra = 0
+
+# beyond CIS
+kernel.kptr_restrict = 2
+kernel.dmesg_restrict = 1
+kernel.unprivileged_bpf_disabled = 1
+kernel.kexec_load_disabled = 1
+kernel.sysrq = 0
+fs.protected_fifos = 2
+fs.protected_regular = 2
+net.core.bpf_jit_harden = 2

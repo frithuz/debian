@@ -1,0 +1,5 @@
+# Accepted deviations from CIS Debian Level 1 Server. Managed by FAI (class HARDEN).
+# Format: <control-id> <reason>. cis-check still runs these controls and reports them
+# as EXCEPT (with the reason) instead of FAIL. Remove a line to enforce the control again.
+1.1.1.9 usb-storage stays enabled: USB media are needed for maintenance (decided 2026-10-31)
+4.3.8/out outbound traffic allowed (output policy accept); input and forward stay default-deny (decided 2026-10-31)

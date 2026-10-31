@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# CIS 2.x / 4.x / 6.x: which services run.
+
+error=0; trap 'error=$(($?>$error?$?:$error))' ERR # save maximum error code
+
+$ROOTCMD systemctl enable nftables.service auditd.service apparmor.service \
+    dailyaidecheck.timer aide-firstboot-init.service
+# rsync stays installed as a client; its daemon must not run (2.1.x)
+$ROOTCMD systemctl mask rsync.service
+# 6.1.2.1.4 this host must not receive other hosts' logs
+$ROOTCMD systemctl mask systemd-journal-remote.socket systemd-journal-remote.service
+
+# 6.1.2.1.2/3 journal upload, if a log server is configured
+if [ -n "$JOURNAL_UPLOAD_URL" ]; then
+    mkdir -p $target/etc/systemd/journal-upload.conf.d
+    printf '[Upload]\nURL=%s\n' "$JOURNAL_UPLOAD_URL" > $target/etc/systemd/journal-upload.conf.d/50-cis.conf
+    $ROOTCMD systemctl enable systemd-journal-upload.service
+fi
+
+# 2.4.1 cron (debootstrap installs it: priority important)
+if [ -f $target/etc/crontab ]; then
+    chmod 0600 $target/etc/crontab
+    chmod 0700 $target/etc/cron.hourly $target/etc/cron.daily $target/etc/cron.weekly \
+               $target/etc/cron.monthly $target/etc/cron.d
+    rm -f $target/etc/cron.deny
+    touch $target/etc/cron.allow; chmod 0640 $target/etc/cron.allow
+    $ROOTCMD chown root:crontab /etc/cron.allow 2>/dev/null || $ROOTCMD chown root:root /etc/cron.allow
+    $ROOTCMD systemctl enable cron.service
+fi
+
+exit $error

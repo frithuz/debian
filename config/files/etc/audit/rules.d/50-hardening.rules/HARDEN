@@ -1,0 +1,11 @@
+# Managed by FAI (class HARDEN). Small starter set; see /usr/share/doc/auditd/examples/rules
+-w /etc/passwd -p wa -k identity
+-w /etc/shadow -p wa -k identity
+-w /etc/group  -p wa -k identity
+-w /etc/sudoers   -p wa -k sudoers
+-w /etc/sudoers.d -p wa -k sudoers
+-w /etc/ssh/sshd_config   -p wa -k sshd
+-w /etc/ssh/sshd_config.d -p wa -k sshd
+-a always,exit -F arch=b64 -S init_module,finit_module,delete_module -k modules
+-a always,exit -F arch=b64 -S adjtimex,settimeofday,clock_settime -k time-change
+-w /etc/localtime -p wa -k time-change

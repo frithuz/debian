@@ -1,0 +1,208 @@
+# Build and boot-test the images natively on both architectures:
+#   amd64 on ubuntu-26.04, arm64 on ubuntu-26.04-arm. No emulation anywhere in the build.
+#
+# Each build job runs in a privileged Debian trixie container with the host's /dev,
+# because FAI needs loop devices (and their partition nodes) and chroots. The container
+# is the Docker Hardened Images dev variant (dhi.io/debian-base:trixie-dev: root, shell,
+# apt with the Debian archive). dhi.io has no anonymous pulls, so the jobs log in with
+# the "dhi" environment's DHI_USERNAME variable (Docker Hub user) and DHI_TOKEN
+# secret (read-only access token).
+#
+# Public repository notes:
+#   - Artifacts of public repos can be downloaded by any signed-in GitHub user.
+#     Nothing secret is built in here: the only secret is the registry token
+#     for pulling the container, and the GRUB password is random per build
+#     (config/secrets/ is never in the repo; see README).
+#   - Pull requests from forks run with a read-only token and no secrets, so they
+#     cannot pull the DHI container and fail at job setup.
+#   - Third-party actions are pinned to full commit SHAs; the container image is pinned
+#     to its multi-arch index digest (refresh both when bumping:
+#     docker buildx imagetools inspect dhi.io/debian-base:trixie-dev).
+
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      metal:
+        description: Also build the metal installer ISOs
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: lint + package lists
+    runs-on: ubuntu-26.04
+    environment: dhi   # DHI_USERNAME variable + DHI_TOKEN secret for the pull
+    container:
+      image: dhi.io/debian-base:trixie-dev@sha256:790849b1e32beaecb770d8f4db4b461aaa46cbb936924eb42f45c791132384cf
+      credentials:
+        username: ${{ vars.DHI_USERNAME }}
+        password: ${{ secrets.DHI_TOKEN }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install lint tools
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends make shellcheck bsdextrautils curl xz-utils ca-certificates
+      - run: make check
+      - name: Package names exist in the Debian archive (amd64 + arm64)
+        run: test/check-package-names.sh
+      - name: Expected package sets
+        run: |
+          make packages ARCH=amd64
+          make packages ARCH=arm64
+
+  cloud:
+    name: cloud image (${{ matrix.arch }})
+    needs: check
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-26.04
+          - arch: arm64
+            runner: ubuntu-26.04-arm
+    runs-on: ${{ matrix.runner }}
+    environment: dhi
+    timeout-minutes: 150
+    container:
+      image: dhi.io/debian-base:trixie-dev@sha256:790849b1e32beaecb770d8f4db4b461aaa46cbb936924eb42f45c791132384cf
+      credentials:
+        username: ${{ vars.DHI_USERNAME }}
+        password: ${{ secrets.DHI_TOKEN }}
+      options: --privileged -v /dev:/dev
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install tooling
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends make procps
+          make deps
+
+      - name: Host facts
+        run: |
+          echo "arch: $(dpkg --print-architecture)  cpus: $(nproc)"; free -h; df -h /
+          if [ -w /dev/kvm ]; then echo "KVM: available"; else echo "KVM: not available, boot test will be emulated (slow)"; fi
+
+      - name: Build
+        env:
+          ARCH: ${{ matrix.arch }}
+        run: make cloud ARCH="$ARCH"
+
+      - name: Boot test
+        env:
+          ARCH: ${{ matrix.arch }}
+        run: test/ci-boot-test.sh build
+
+      - name: Collect logs
+        if: always()
+        run: |
+          mkdir -p build/fai-logs
+          cp -a /var/log/fai/. build/fai-logs/ 2>/dev/null || true
+
+      - name: Upload reports and logs
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: cloud-${{ matrix.arch }}-reports
+          path: |
+            build/cloud-${{ matrix.arch }}.packages.tsv
+            build/cloud-${{ matrix.arch }}.cis-check.txt
+            build/boot-test-${{ matrix.arch }}/
+            !build/boot-test-${{ matrix.arch }}/qemu/
+            build/fai-logs/
+          retention-days: 14
+          if-no-files-found: warn
+
+      - name: Upload image
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: cloud-${{ matrix.arch }}.qcow2
+          path: build/cloud-${{ matrix.arch }}.qcow2
+          compression-level: 0   # qcow2 is already compact; zipping it again only costs time
+          retention-days: 7
+
+  compare:
+    name: package sets consistent
+    needs: cloud
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: cloud-*-reports
+      - name: Build manifest vs. what is installed after first boot, per arch
+        # Fails if first boot changed the package set (e.g. something installing packages
+        # behind the build's back). A rare unattended-upgrades run during the test can
+        # also show up here as a version difference.
+        run: |
+          rc=0
+          for a in amd64 arm64; do
+            echo "== $a"
+            test/compare-packages.sh cloud-$a-reports/cloud-$a.packages.tsv cloud-$a-reports/boot-test-$a/live-packages.tsv || rc=1
+          done
+          exit $rc
+      - name: amd64 vs. arm64 (informational; kernels/firmware differ by design)
+        run: test/compare-packages.sh cloud-amd64-reports/cloud-amd64.packages.tsv cloud-arm64-reports/cloud-arm64.packages.tsv || true
+
+  metal:
+    name: metal ISO (${{ matrix.arch }})
+    if: github.event_name == 'workflow_dispatch' && inputs.metal
+    needs: check
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-26.04
+          - arch: arm64
+            runner: ubuntu-26.04-arm
+    runs-on: ${{ matrix.runner }}
+    environment: dhi
+    timeout-minutes: 120
+    container:
+      image: dhi.io/debian-base:trixie-dev@sha256:790849b1e32beaecb770d8f4db4b461aaa46cbb936924eb42f45c791132384cf
+      credentials:
+        username: ${{ vars.DHI_USERNAME }}
+        password: ${{ secrets.DHI_TOKEN }}
+      options: --privileged -v /dev:/dev
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install tooling
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends make
+          make deps
+      - name: Build ISO
+        env:
+          ARCH: ${{ matrix.arch }}
+        run: make metal-iso ARCH="$ARCH"
+      - name: Upload ISO
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: metal-${{ matrix.arch }}.iso
+          path: build/metal-${{ matrix.arch }}.iso
+          compression-level: 0
+          retention-days: 7

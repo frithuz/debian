@@ -1,0 +1,3 @@
+# Physical machines: keep predictable NIC names (enp3s0 etc.), DHCP by default.
+# Static addressing can be layered on later via files/etc/network/interfaces/<HOSTNAME>.
+MODULESLIST=""

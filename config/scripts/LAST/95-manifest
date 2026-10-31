@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# Record exactly what this machine/image was built with, so any two machines
+# can be compared:  test/compare-packages.sh A.tsv B.tsv
+#   /var/lib/fai-build/packages.tsv   every installed package and version
+#   /var/lib/fai-build/build-info     classes, date, apt snapshot
+# Copies also land in the FAI log dir (the Makefile collects the cloud one).
+
+d=$target/var/lib/fai-build
+mkdir -p $d
+dpkg-query --admindir=$target/var/lib/dpkg -W -f='${db:Status-Status}\t${binary:Package}\t${Version}\n' \
+    | awk -F'\t' '$1 == "installed" { print $2 "\t" $3 }' | sort > $d/packages.tsv
+cat > $d/build-info <<INFO
+built=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+classes=$(echo $classes)
+apt_snapshot=${APT_SNAPSHOT:-none (live mirrors)}
+packages=$(wc -l < $d/packages.tsv)
+INFO
+cp $d/packages.tsv $d/build-info $LOGDIR/
+echo "manifest: $(wc -l < $d/packages.tsv) packages recorded in /var/lib/fai-build/"
+exit 0

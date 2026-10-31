@@ -1,0 +1,20 @@
+# CIS Debian Level 1 Server (see scripts/HARDEN/, files/**/HARDEN and `cis-check`)
+PACKAGES install-norec
+nftables                 # 4.1/4.3  single firewall: nftables
+apparmor apparmor-utils apparmor-profiles   # 1.3.1
+libpam-pwquality         # 5.3.1.3 / 5.3.3.2
+aide aide-common         # 6.3     filesystem integrity
+systemd-journal-remote   # 6.1.2.1 journal upload to a log server (configure JOURNAL_UPLOAD_URL)
+auditd                   # 6.2     (Level 2, kept: cheap and useful)
+libpam-tmpdir
+needrestart
+debsums
+lynis                    # second opinion; report in the FAI logs
+
+# not allowed / not needed on a CIS server
+PACKAGES remove
+nullmailer               # 2.1.21  no MTA at all (trivially "local-only")
+procinfo
+telnet inetutils-telnet  # 2.2.4
+talk nis ldap-utils ftp tnftp   # 2.2.x (rsh-client no longer exists in trixie; cis-check 2.2.2 still verifies)
+ufw iptables-persistent  # 4.1.1   only one firewall

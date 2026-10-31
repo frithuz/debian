@@ -1,0 +1,3 @@
+# don't email/monthly-check from mdadm on boxes that don't use md
+mdadm	mdadm/autocheck	boolean	false
+mdadm	mdadm/start_daemon	boolean	false

@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# If the install was pinned to a snapshot (APT_SNAPSHOT in class/SERVER.var),
+# point the finished system back at the live mirrors so it receives security
+# updates. Runs after LAST/50-misc, which re-copies the install-time sources.
+
+ifclass SERVER || exit 0
+[ -n "$APT_SNAPSHOT" ] || exit 0
+
+fcopy -SM -c DEBIAN_DEFAULT /etc/apt/sources.list
+rm -rf $target/var/lib/apt/lists/*      # stale snapshot indexes; refreshed on first apt update
+echo "apt sources switched from snapshot $APT_SNAPSHOT to live mirrors"

@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# Physical-machine extras. (grub itself is installed later by GRUB_EFI/10-setup,
+# which also runs update-grub and picks up the drop-in below.)
+
+error=0; trap 'error=$(($?>$error?$?:$error))' ERR # save maximum error code
+
+$ROOTCMD systemctl enable fstrim.timer smartmontools.service
+# Serial console for IPMI SOL. arm64 servers announce theirs via ACPI SPCR; see CLOUD/20-serial-console.
+if ifclass AMD64; then
+    fcopy -M /etc/default/grub.d/50-serial-console.cfg
+fi
+
+exit $error

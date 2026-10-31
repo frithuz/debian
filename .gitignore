@@ -1,0 +1,5 @@
+build/
+test/work/
+# local secrets: only the README is tracked
+config/secrets/*
+!config/secrets/README

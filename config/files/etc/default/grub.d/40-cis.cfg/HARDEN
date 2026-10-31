@@ -1,0 +1,2 @@
+# Managed by FAI (class HARDEN). CIS 1.3.1.2: AppArmor enabled from the bootloader.
+GRUB_CMDLINE_LINUX="$GRUB_CMDLINE_LINUX apparmor=1 security=apparmor"

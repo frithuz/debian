@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+
+# Assign classes to hosts based on their hostname.
+#
+# Cloud images do NOT go through this file: fai-diskimage gets its class list
+# explicitly via -c (see ../Makefile). This is only used when installing a
+# physical machine from the ISO/PXE *without* the profile menu.
+
+# do not use this if a menu will be presented (see server.profile)
+[ "$flag_menu" ] && exit 0
+
+case $HOSTNAME in
+    metal*|srv*)
+        echo "FAIBASE DEBIAN SERVER HARDEN METAL" ;;
+    *)
+        echo "FAIBASE DEBIAN SERVER HARDEN METAL" ;;
+esac

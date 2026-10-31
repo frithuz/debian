@@ -1,0 +1,40 @@
+# Overrides for FAIBASE.var / DEBIAN.var. Classes are applied left to right,
+# so anything set here wins over FAIBASE.var.
+
+TIMEZONE=UTC
+
+# No FAI-created accounts: cloud-init creates 'jonathan' on first boot on every
+# machine (files/etc/cloud/cloud.cfg.d/90-fai-defaults.cfg/SERVER), with SSH keys
+# imported from GitHub per config/cloud-init/user-data. Root is locked by scripts/SERVER/10-lock-root.
+ROOTPW=''
+username=''
+
+# Never let the build pull from unsigned repos.
+FAI_ALLOW_UNSIGNED=0
+
+# Any failing script (including the package check in scripts/LAST/90-verify-packages)
+# stops the build instead of being logged and ignored. FAI's default is 700,
+# which lets configure-script errors (code 420) through.
+STOP_ON_ERROR=400
+
+# --- Package versions --------------------------------------------------------
+# Empty: install from the live Debian mirrors. Every build and every metal
+#        install gets whatever is current that day.
+# Set:   install from snapshot.debian.org frozen at that moment, so every build
+#        and every install resolves to the same versions. Bump it on purpose
+#        (e.g. monthly) and rebuild. Format: YYYYMMDDTHHMMSSZ
+#        After installing, machines are switched back to the live mirrors so
+#        unattended-upgrades can still apply security fixes
+#        (scripts/LAST/96-final-sources).
+APT_SNAPSHOT=''
+
+if [ -n "$APT_SNAPSHOT" ]; then
+    apt_opts='[check-valid-until=no] '
+    apt_base=https://snapshot.debian.org/archive/debian/$APT_SNAPSHOT
+    apt_sec=https://snapshot.debian.org/archive/debian-security/$APT_SNAPSHOT
+    FAI_DEBOOTSTRAP="$release $apt_base"
+else
+    apt_opts=''
+    apt_base=$apt_cdn/debian
+    apt_sec=$security_cdn/debian-security
+fi

@@ -1,0 +1,10 @@
+# Managed by FAI (class HARDEN). CIS 6.1.4.1: logs not readable by "other".
+# Re-applied at every boot for files that installers/tools create world-readable.
+# "~" keeps x bits only where they exist: directories 0750, files 0640.
+Z /var/log/fai                 ~0750 - - -
+Z /var/log/apt                 ~0750 - - -
+Z /var/log/aide                ~0750 - - -
+Z /var/log/unattended-upgrades ~0750 - - -
+z /var/log/dpkg.log             0640 - - -
+z /var/log/alternatives.log     0640 - - -
+z /var/log/install_packages.list 0640 - - -

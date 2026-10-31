@@ -1,0 +1,29 @@
+# default values for installation. You can override them in your *.var files
+
+# allow installation of packages from unsigned repositories
+FAI_ALLOW_UNSIGNED=1
+
+# Set UTC=yes if your system clock is set to UTC (GMT), and UTC=no if not.
+UTC=yes
+TIMEZONE=Europe/Berlin
+
+# No root password (upstream's example shipped the well-known password "fai").
+# Root is locked by scripts/SERVER/10-lock-root; logins come from cloud-init.
+ROOTPW=''
+
+# errors in tasks greater than this value will cause the installation to stop
+STOP_ON_ERROR=700
+
+# set parameter for install_packages(8)
+MAXPACKAGES=800
+
+# Account on the FAI server for saving log files and calling fai-chboot.
+# Remove the hash character in the next line to activate this feature
+#LOGUSER=fai
+
+# No FAI-created user account (upstream's example created 'demo' / "fai").
+username=''
+USERPW=''
+
+# set a default
+FAI_DEBOOTSTRAP="trixie http://deb.debian.org/debian"

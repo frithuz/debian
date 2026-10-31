@@ -1,0 +1,5 @@
+# Apt sources used DURING the install (class SERVER). The mirror and the
+# optional snapshot pin come from class/SERVER.var.
+deb {%apt_opts%}{%apt_base%} {%release%} main contrib non-free non-free-firmware
+deb {%apt_opts%}{%apt_base%} {%release%}-updates main contrib non-free non-free-firmware
+deb {%apt_opts%}{%apt_sec%} {%secsuite%} main contrib non-free non-free-firmware

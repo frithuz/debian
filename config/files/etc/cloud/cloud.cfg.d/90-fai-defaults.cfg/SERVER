@@ -1,0 +1,16 @@
+# Managed by FAI (class SERVER: every machine, cloud or metal).
+# Same login everywhere: 'jonathan', key-only, passwordless sudo.
+# SSH keys come from config/cloud-init/user-data (and/or the cloud provider).
+system_info:
+  default_user:
+    name: jonathan
+    lock_passwd: true
+    gecos: Jonathan
+    groups: [adm, sudo]
+    sudo: ["ALL=(ALL:ALL) NOPASSWD:ALL"]
+    shell: /bin/bash
+
+disable_root: true
+ssh_pwauth: false
+ssh_deletekeys: true
+ssh_genkeytypes: [ed25519, ecdsa]

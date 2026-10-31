@@ -1,0 +1,31 @@
+#!/usr/sbin/nft -f
+# Managed by FAI (class HARDEN). CIS 4.3: nftables, default deny on input and forward.
+# Inbound: SSH only. Outbound: everything allowed. Cloud security groups still apply on top.
+flush ruleset
+
+table inet filter {
+    chain input {
+        type filter hook input priority filter; policy drop;
+
+        iif lo accept
+        ip saddr 127.0.0.0/8 counter drop
+        ip6 saddr ::1 counter drop
+
+        ct state established,related accept
+        ct state invalid drop
+
+        meta l4proto icmp accept
+        meta l4proto ipv6-icmp accept
+        udp dport 68 accept
+        udp dport 546 ip6 saddr fe80::/10 accept
+
+        tcp dport 22 ct state new limit rate 15/minute accept
+    }
+    chain forward {
+        type filter hook forward priority filter; policy drop;
+    }
+    chain output {
+        # Outbound is allowed on purpose: see /etc/cis-check/exceptions (4.3.8/out).
+        type filter hook output priority filter; policy accept;
+    }
+}

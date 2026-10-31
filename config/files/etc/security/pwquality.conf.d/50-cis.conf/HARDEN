@@ -1,0 +1,9 @@
+# Managed by FAI (class HARDEN). CIS 5.3.3.2. (Accounts are key-only; this governs any password ever set.)
+difok = 2
+minlen = 14
+minclass = 4
+maxrepeat = 3
+maxsequence = 3
+dictcheck = 1
+enforcing = 1
+enforce_for_root

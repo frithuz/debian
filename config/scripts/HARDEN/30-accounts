@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# CIS 5.4: password/account defaults and umask.
+
+error=0; trap 'error=$(($?>$error?$?:$error))' ERR # save maximum error code
+
+defs=/etc/login.defs
+fai-sed -E 's/^PASS_MAX_DAYS\s.*/PASS_MAX_DAYS\t365/' $defs   # 5.4.1.1
+fai-sed -E 's/^PASS_WARN_AGE\s.*/PASS_WARN_AGE\t7/'   $defs   # 5.4.1.3
+fai-sed -E 's/^ENCRYPT_METHOD\s.*/ENCRYPT_METHOD YESCRYPT/' $defs   # 5.4.1.4
+# trixie's login.defs has no UMASK line at all; add one (5.4.3.3)
+if grep -qE '^UMASK\s' $target$defs; then
+    fai-sed -E 's/^UMASK\s.*/UMASK\t\t027/' $defs
+else
+    echo -e 'UMASK\t\t027' >> $target$defs
+fi
+$ROOTCMD useradd -D -f 45                                     # 5.4.1.5
+
+# 7.1 permissions on account files
+chmod 0644 $target/etc/passwd $target/etc/group $target/etc/shells
+chmod 0640 $target/etc/shadow $target/etc/gshadow
+chgrp shadow $target/etc/shadow $target/etc/gshadow
+for f in passwd- group-; do [ -f $target/etc/$f ] && chmod 0644 $target/etc/$f; done
+for f in shadow- gshadow-; do [ -f $target/etc/$f ] && { chmod 0640 $target/etc/$f; chgrp shadow $target/etc/$f; }; done
+[ -f $target/etc/security/opasswd ] && chmod 0600 $target/etc/security/opasswd
+
+exit $error

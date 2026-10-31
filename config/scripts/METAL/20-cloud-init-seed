@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# Bake config/cloud-init/user-data into the install as a NoCloud seed, with a
+# unique instance-id, so cloud-init runs on first boot exactly as in a cloud.
+# (Runs after SERVER/20-cloud-init, whose `cloud-init clean` would remove it.)
+
+error=0; trap 'error=$(($?>$error?$?:$error))' ERR # save maximum error code
+
+seed=$target/var/lib/cloud/seed/nocloud
+install -d -m 0700 $seed
+install -m 0600 $FAI/cloud-init/user-data $seed/user-data
+cat > $seed/meta-data <<META
+instance-id: metal-$(cat /proc/sys/kernel/random/uuid)
+local-hostname: $HOSTNAME
+META
+chmod 0600 $seed/meta-data
+fcopy -M /etc/cloud/cloud.cfg.d/91-datasource.cfg
+
+exit $error

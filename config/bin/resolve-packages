@@ -1,0 +1,94 @@
+#!/usr/bin/env bash
+# Resolve package_config/ into the final package set for a list of FAI classes,
+# the way install_packages applies it:
+#   - blocks are selected by the class list after PACKAGES (plain list = OR,
+#     or an expression with ! && || ( ))
+#   - install, install-norec, apt, aptitude => install; remove, aptitude-r, pkg- => remove
+#   - a removal anywhere wins (install_packages runs removals after installs)
+#
+# Usage:  resolve-packages [--source-vars] CONFIG_DIR CLASS[,CLASS...] [CLASS...]
+#   --source-vars  evaluate class/*.var first (for use outside FAI, e.g. `make packages`).
+#                  Inside FAI the variables are already in the environment.
+# Output: one line per package, sorted:  <package> TAB install|remove TAB <class>
+# Exit 1 if a ${variable} used as a package name is undefined.
+
+source_vars=0
+if [ "${1:-}" = --source-vars ]; then source_vars=1; shift; fi
+cfg=${1:?usage: resolve-packages [--source-vars] CONFIG_DIR CLASSES...}; shift
+read -ra classes <<< "$(echo "$*" | tr ',' ' ')"
+
+declare -A active state from
+for c in "${classes[@]}"; do active[$c]=1; done
+
+if [ $source_vars = 1 ]; then
+    ifclass() {
+        if [ "$1" = -o ]; then shift; local c; for c; do [ -n "${active[$c]:-}" ] && return 0; done; return 1; fi
+        [ -n "${active[$1]:-}" ]
+    }
+    inside_nfsroot() { return 1; }
+    for c in "${classes[@]}"; do
+        # shellcheck disable=SC1090
+        [ -f "$cfg/class/$c.var" ] && . "$cfg/class/$c.var" </dev/null >/dev/null 2>&1
+    done
+fi
+
+classes_match() { # $1 = text after "PACKAGES <type>"
+    local expr=$1 w
+    [ -z "${expr//[[:space:]]/}" ] && return 0
+    if [[ ! $expr =~ [\!\&\|\(\)] ]]; then          # plain list: any class matches
+        for w in $expr; do [ -n "${active[$w]:-}" ] && return 0; done
+        return 1
+    fi
+    # boolean expression: substitute every class name with 1/0, evaluate arithmetically
+    local out=''
+    while [[ $expr =~ ^([^A-Za-z0-9_-]*)([A-Za-z0-9_-]+)(.*)$ ]]; do
+        out+=${BASH_REMATCH[1]}
+        [ -n "${active[${BASH_REMATCH[2]}]:-}" ] && out+='1' || out+='0'
+        expr=${BASH_REMATCH[3]}
+    done
+    out+=$expr
+    (( out )) 2>/dev/null
+}
+
+rc=0
+for c in "${classes[@]}"; do
+    f=$cfg/package_config/$c
+    [ -f "$f" ] || continue
+    type='' doit=0
+    while IFS= read -r line || [ -n "$line" ]; do
+        line=${line%%#*}
+        [[ $line =~ [^[:space:]] ]] || continue
+        if [[ $line =~ ^PACKAGES[[:space:]]+([^[:space:]]+)[[:space:]]*(.*)$ ]]; then
+            type=${BASH_REMATCH[1]} rest=${BASH_REMATCH[2]}
+            [[ $rest =~ ^[^[:space:]]+=[^[:space:]]+[[:space:]]*(.*)$ ]] && rest=${BASH_REMATCH[1]}  # drop release=...
+            classes_match "$rest" && doit=1 || doit=0
+            continue
+        fi
+        [ $doit = 1 ] || continue
+        case $type in
+            install|install-norec|apt|aptitude) act=install ;;
+            remove|aptitude-r)                  act=remove ;;
+            *) continue ;;   # taskinst, hold, unpack, ...: not checked
+        esac
+        for p in $line; do
+            if [[ $p =~ ^\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?(.*)$ ]]; then
+                n=${BASH_REMATCH[1]}
+                if [ -z "${!n:-}" ]; then
+                    echo "resolve-packages: \$$n is undefined (package_config/$c)" >&2; rc=1; continue
+                fi
+                p=${!n}${BASH_REMATCH[2]}
+            fi
+            p=${p%%[/=]*}; p=${p%%:*}             # pkg/release, pkg=version, pkg:arch
+            a=$act
+            if [[ $p == *- ]]; then p=${p%-}; a=remove; fi
+            if [ $a = remove ]; then
+                state[$p]=remove from[$p]=$c
+            elif [ "${state[$p]:-}" != remove ]; then
+                state[$p]=install; [ -n "${from[$p]:-}" ] || from[$p]=$c
+            fi
+        done
+    done < "$f"
+done
+
+for p in "${!state[@]}"; do printf '%s\t%s\t%s\n' "$p" "${state[$p]}" "${from[$p]}"; done | sort
+exit $rc

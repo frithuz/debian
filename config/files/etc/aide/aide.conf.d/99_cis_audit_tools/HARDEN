@@ -1,0 +1,7 @@
+# Managed by FAI (class HARDEN). CIS 6.3.3: protect the audit tools.
+/usr/sbin/auditctl p+i+n+u+g+s+b+acl+xattrs+sha512
+/usr/sbin/auditd p+i+n+u+g+s+b+acl+xattrs+sha512
+/usr/sbin/ausearch p+i+n+u+g+s+b+acl+xattrs+sha512
+/usr/sbin/aureport p+i+n+u+g+s+b+acl+xattrs+sha512
+/usr/sbin/autrace p+i+n+u+g+s+b+acl+xattrs+sha512
+/usr/sbin/augenrules p+i+n+u+g+s+b+acl+xattrs+sha512

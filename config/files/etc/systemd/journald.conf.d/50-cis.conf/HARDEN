@@ -1,0 +1,5 @@
+# Managed by FAI (class HARDEN). CIS 6.1.2: journald is the only logging system.
+[Journal]
+Storage=persistent
+Compress=yes
+ForwardToSyslog=no
