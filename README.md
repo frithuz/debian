@@ -444,7 +444,9 @@ cloud-init if it varies per machine.
 - **Serial console:** amd64 sets `console=ttyS0` for IPMI SOL and cloud consoles. arm64
   sets nothing, and the kernel uses the console the firmware announces (ACPI SPCR), which
   is `ttyAMA0` on QEMU and many Arm servers and `ttyS0` on others.
-- **Networking on metal** uses DHCP on the install NIC. For static IPs, use cloud-init
+- **Networking** (cloud and metal) is systemd-networkd with systemd-resolved, configured
+  by cloud-init on first boot. Without other network config, cloud-init uses DHCP (IPv4
+  and IPv6) on the first NIC with a link. For static IPs on metal, use cloud-init
   `network:` config: put a `network-config` file in the NoCloud seed.
 - **Changing the username:** it lives in two places, `default_user` in
   `files/etc/cloud/cloud.cfg.d/90-fai-defaults.cfg/SERVER` and `AllowUsers` in

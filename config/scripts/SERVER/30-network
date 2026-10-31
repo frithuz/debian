@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# Networking: cloud-init writes the config for systemd-networkd on first boot
+# (renderer set in files/etc/cloud/cloud.cfg.d/90-fai-defaults.cfg), and
+# systemd-resolved provides DNS from DHCP.
+
+error=0; trap 'error=$(($?>$error?$?:$error))' ERR # save maximum error code
+
+$ROOTCMD systemctl enable systemd-networkd.service systemd-resolved.service
+# FAI writes a plain resolv.conf into the target during the install; make it
+# resolved's stub again (systemd-resolved's postinst does the same).
+ln -sfn ../run/systemd/resolve/stub-resolv.conf $target/etc/resolv.conf
+
+exit $error

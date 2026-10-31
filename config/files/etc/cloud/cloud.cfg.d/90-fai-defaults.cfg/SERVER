@@ -9,6 +9,11 @@ system_info:
     groups: [adm, sudo]
     sudo: ["ALL=(ALL:ALL) NOPASSWD:ALL"]
     shell: /bin/bash
+  # Network config goes to systemd-networkd. (Debian's default is ifupdown, which
+  # can't do DHCPv6 without the unmaintained isc-dhcp-client.)
+  network:
+    renderers: [networkd]
+    activators: [networkd]
 
 disable_root: true
 ssh_pwauth: false
