@@ -21,7 +21,7 @@ The split of responsibilities is the same on every machine:
 - **cloud-init does the configuration** on first boot: users, SSH keys, hostname and
   anything else in `config/cloud-init/user-data`. Clouds get that file as instance user
   data. Metal installs get it baked in as a NoCloud seed.
-  It also installs Claude Code and Codex CLI into `jonathan`'s home directory.
+  It also installs Claude Code, Codex CLI, and pnpm into `jonathan`'s home directory.
 - **One login everywhere:** user `jonathan`, SSH keys only, imported from GitHub
   (`gh:garbee`, i.e. https://github.com/garbee.keys) on first boot. Root is locked and
   there are no passwords.
@@ -453,7 +453,7 @@ and an APT hook refreshes it after package updates. When the Debian version
 changes, existing GRUB menus are regenerated too. No Debian version is
 hardcoded in the installed configuration.
 
-## User-installed coding agents
+## User-installed development tools
 
 On first boot, cloud-init runs the official native installers for
 [Claude Code](https://code.claude.com/docs/en/setup) and
@@ -462,6 +462,11 @@ his account. Both install into his home directory, with commands in
 `~/.local/bin`; npm is not required. The setup adds that directory to his Bash
 login and non-interactive SSH PATHs. No authentication credentials are baked
 into the image: run `claude` and `codex` as `jonathan` to sign in.
+
+The same first-boot script runs [pnpm's standalone installer](https://pnpm.io/installation)
+as `jonathan`. It sets `PNPM_HOME=~/.local/share/pnpm` and adds its `bin`
+directory to his login and non-interactive SSH PATHs. pnpm is installed without
+npm and can install global tools into this user-owned directory.
 
 This is user software provisioned after installation, separate from the Debian
 package contract and manifest. Failures are reported by `cloud-init status

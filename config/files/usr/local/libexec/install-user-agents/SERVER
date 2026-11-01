@@ -27,9 +27,11 @@ done
 
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
-for tool in claude codex; do
+for tool in claude codex pnpm; do
+    tool_path="$HOME/.local/bin/$tool"
+    if [[ $tool == pnpm ]]; then tool_path="$PNPM_HOME/bin/pnpm"; fi
     # A retry after partial failure leaves an already working tool alone.
-    if "$HOME/.local/bin/$tool" --version >/dev/null 2>&1; then
+    if "$tool_path" --version >/dev/null 2>&1; then
         continue
     fi
     case $tool in
@@ -43,6 +45,12 @@ for tool in claude codex; do
                 https://chatgpt.com/codex/install.sh -o "$work/codex.sh"
             CODEX_NON_INTERACTIVE=1 sh "$work/codex.sh"
             ;;
+        pnpm)
+            curl -fsSL --retry 3 --connect-timeout 15 --max-time 120 \
+                https://get.pnpm.io/install.sh -o "$work/pnpm.sh"
+            # PATH is managed above, including non-interactive SSH shells.
+            SHELL=/bin/bash PNPM_NO_MODIFY_PATH=1 sh "$work/pnpm.sh"
+            ;;
     esac
-    "$HOME/.local/bin/$tool" --version
+    "$tool_path" --version
 done

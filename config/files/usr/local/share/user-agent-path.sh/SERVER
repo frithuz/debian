@@ -4,4 +4,9 @@ case :$PATH: in
     *:"$HOME/.local/bin":*) ;;
     *) PATH="$HOME/.local/bin:$PATH" ;;
 esac
-export PATH
+PNPM_HOME="$HOME/.local/share/pnpm"
+case :$PATH: in
+    *:"$PNPM_HOME/bin":*) ;;
+    *) PATH="$PNPM_HOME/bin:$PATH" ;;
+esac
+export PATH PNPM_HOME
