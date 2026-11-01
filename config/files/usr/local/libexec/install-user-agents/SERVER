@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# Called by cloud-init as jonathan, after account creation and networking.
+set -euo pipefail
+if [[ $(id -un) != jonathan || $(id -u) == 0 ]]; then
+    echo 'ERROR: install-user-agents must run as jonathan, without sudo' >&2
+    exit 1
+fi
+cd "$HOME"
+umask 027
+mkdir -p "$HOME/.local/bin"
+# shellcheck source=/dev/null
+. /usr/local/share/user-agent-path.sh
+
+# Debian's .bashrc returns early in non-interactive SSH sessions. Source the
+# PATH fragment first; .profile also covers login shells. Preserve user content.
+path_line='. /usr/local/share/user-agent-path.sh'
+for rc in .bashrc .profile; do
+    if ! grep -qxF "$path_line" "$HOME/$rc" 2>/dev/null; then
+        tmp_rc=$(mktemp "$HOME/$rc.XXXXXX")
+        {
+            printf '%s\n' '# User-local command line tools' "$path_line"
+            if [[ -f $HOME/$rc ]]; then cat "$HOME/$rc"; fi
+        } > "$tmp_rc"
+        mv "$tmp_rc" "$HOME/$rc"
+    fi
+done
+
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+for tool in claude codex; do
+    # A retry after partial failure leaves an already working tool alone.
+    if "$HOME/.local/bin/$tool" --version >/dev/null 2>&1; then
+        continue
+    fi
+    case $tool in
+        claude)
+            curl -fsSL --retry 3 --connect-timeout 15 --max-time 120 \
+                https://claude.ai/install.sh -o "$work/claude.sh"
+            bash "$work/claude.sh"
+            ;;
+        codex)
+            curl -fsSL --retry 3 --connect-timeout 15 --max-time 120 \
+                https://chatgpt.com/codex/install.sh -o "$work/codex.sh"
+            CODEX_NON_INTERACTIVE=1 sh "$work/codex.sh"
+            ;;
+    esac
+    "$HOME/.local/bin/$tool" --version
+done

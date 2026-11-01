@@ -1,0 +1,3 @@
+#!/bin/sh
+# cloud-init runs this after creating users; installers must never run as root.
+exec /usr/sbin/runuser -u jonathan -- /usr/local/libexec/install-user-agents

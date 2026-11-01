@@ -195,6 +195,19 @@ printf '%s\n' "$st" > "$out/cloud-init-status.txt"
 cat "$out/cloud-init-status.txt"
 grep -qE '^status: done' "$out/cloud-init-status.txt" || bad "cloud-init did not finish cleanly"
 vm 'sudo cat /var/log/cloud-init.log' > "$out/cloud-init.log" 2>&1 || true
+vm 'sudo cat /var/log/cloud-init-output.log' > "$out/cloud-init-output.log" 2>&1 || true
+
+phase "user coding agents"
+# Plain SSH uses non-interactive Bash startup; also check a login shell.
+# Commands and their targets must belong to the user, not a global install.
+vm 'set -e; for tool in claude codex; do
+    test "$(command -v "$tool")" = "$HOME/.local/bin/$tool"
+    test -O "$HOME/.local/bin/$tool"
+    "$tool" --version
+done' > "$out/user-agents.txt" 2>&1 || bad "coding agents missing, not user-owned, or absent from SSH PATH"
+vm 'bash -lc '\''set -e; for tool in claude codex; do
+    test "$(command -v "$tool")" = "$HOME/.local/bin/$tool"
+done'\''' || bad "coding agents absent from login shell PATH"
 
 phase "GitHub key import"
 n=$(vm 'grep -v ci-boot-test ~/.ssh/authorized_keys | grep -c . || true' 2>/dev/null || true)

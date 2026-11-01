@@ -16,11 +16,12 @@ runners (see [CI](#ci-github-actions)).
 
 The split of responsibilities is the same on every machine:
 
-- **FAI decides what's installed.** The package set comes from `config/package_config/`
+- **FAI decides which Debian packages are installed.** The package set comes from `config/package_config/`
   only, and the build fails if the result doesn't match it.
 - **cloud-init does the configuration** on first boot: users, SSH keys, hostname and
   anything else in `config/cloud-init/user-data`. Clouds get that file as instance user
   data. Metal installs get it baked in as a NoCloud seed.
+  It also installs Claude Code and Codex CLI into `jonathan`'s home directory.
 - **One login everywhere:** user `jonathan`, SSH keys only, imported from GitHub
   (`gh:garbee`, i.e. https://github.com/garbee.keys) on first boot. Root is locked and
   there are no passwords.
@@ -432,6 +433,23 @@ This repo is meant to be public. Here's what that exposes and what's kept out:
   `build/` as ignored. Upstream FAI's example password hashes (`fai`) have been removed
   from `class/FAIBASE.var`, and the metal installer's own root password (also `fai`,
   from fai-server's `nfsroot.conf`) is locked at build time (see the Makefile).
+
+## User-installed coding agents
+
+On first boot, cloud-init runs the official native installers for
+[Claude Code](https://code.claude.com/docs/en/setup) and
+[Codex CLI](https://learn.chatgpt.com/docs/codex/cli) as `jonathan`, after creating
+his account. Both install into his home directory, with commands in
+`~/.local/bin`; npm is not required. The setup adds that directory to his Bash
+login and non-interactive SSH PATHs. No authentication credentials are baked
+into the image: run `claude` and `codex` as `jonathan` to sign in.
+
+This is user software provisioned after installation, separate from the Debian
+package contract and manifest. Failures are reported by `cloud-init status
+--long` and `/var/log/cloud-init-output.log`. To retry after fixing connectivity,
+run `/usr/local/libexec/install-user-agents` as `jonathan` (without sudo).
+Retries skip working installations. New machines receive the releases current
+at first boot; Debian's `APT_SNAPSHOT` does not pin these tools.
 
 ## Node.js without npm
 

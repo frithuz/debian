@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Install only the provisioning scripts here. The native installers run on
+# first boot as the cloud-init-created user, without changing Debian packages.
+set -euo pipefail
+fcopy -m root,root,0755 /usr/local/libexec/install-user-agents
+fcopy -m root,root,0644 /usr/local/share/user-agent-path.sh
+fcopy -m root,root,0755 /var/lib/cloud/scripts/per-instance/50-user-agents

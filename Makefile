@@ -85,6 +85,9 @@ check:
 	@cd $(CONFIG) && for f in scripts/*/* hooks/*.* bin/*; do [ -x "$$f" ] || { echo "not executable: $$f"; exit 1; }; done && echo "scripts executable: ok"
 	@if command -v shellcheck >/dev/null; then \
 	    shellcheck -S warning -e SC2154,SC2086,SC2034,SC2016 \
+	        config/files/usr/local/libexec/install-user-agents/SERVER \
+	        config/files/usr/local/share/user-agent-path.sh/SERVER \
+	        config/files/var/lib/cloud/scripts/per-instance/50-user-agents/SERVER \
 	        config/bin/* config/files/usr/local/sbin/cis-check/HARDEN config/scripts/SERVER/* config/scripts/HARDEN/* \
 	        config/scripts/METAL/* config/scripts/CLOUD/20-* config/scripts/LAST/9* \
 	        config/hooks/updatebase.DEBIAN config/hooks/instsoft.SERVER config/hooks/partition.METAL.sh config/hooks/setup.DEFAULT.sh \
