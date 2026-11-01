@@ -13,9 +13,12 @@ intel-microcode amd64-microcode
 
 # Firmware for common server NICs/RAID. Needs non-free-firmware in the
 # build's apt sources (it is in FAI's default /etc/fai/apt/sources.list).
-PACKAGES install
+# No recommends: they would add GPU firmware and USB Wi-Fi dongle firmware.
+PACKAGES install-norec
 firmware-linux-free
 firmware-misc-nonfree
 firmware-bnx2 firmware-bnx2x
 firmware-realtek
 firmware-netronome firmware-netxen firmware-qlogic
+firmware-intel-misc        # Intel E810 (ice) DDP packages, QAT
+firmware-mediatek          # MediaTek/Ralink Wi-Fi and Bluetooth on home machines
