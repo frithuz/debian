@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Normalize both traditional and deb822 repository files before using APT.
+set -euo pipefail
+apt_dir=${1:?usage: https-apt-sources APT_DIR}
+shopt -s nullglob
+for source in "$apt_dir/sources.list" "$apt_dir/sources.list.d/"*.list "$apt_dir/sources.list.d/"*.sources; do
+    [[ -f $source ]] || continue
+    sed -i 's|http://|https://|g' "$source"
+done

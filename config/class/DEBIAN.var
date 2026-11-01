@@ -1,6 +1,6 @@
 release=trixie
-apt_cdn=http://deb.debian.org
-security_cdn=http://security.debian.org
+apt_cdn=https://deb.debian.org
+security_cdn=https://security.debian.org
 
 secsuite=$release-security
 

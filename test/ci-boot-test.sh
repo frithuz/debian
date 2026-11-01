@@ -221,6 +221,11 @@ else warn "no keys imported from GitHub (network or API rate limit on shared CI 
 
 phase "basics"
 vm 'set -e
+    test -s /etc/ssl/certs/ca-certificates.crt
+    dpkg-query -W -f="\${db:Status-Status}" ca-certificates | grep -qx installed
+    ! grep -s "http://" /etc/apt/sources.list /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources' \
+    || bad "CA certificates are missing or an APT repository still uses HTTP"
+vm 'set -e
     test ! -s /etc/motd
     test ! -x /etc/update-motd.d/10-uname
     test -x /etc/update-motd.d/05-frithuz

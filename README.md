@@ -192,11 +192,16 @@ The Makefile detects root.
 ### 1. Install the tooling, check the config
 
 ```sh
+sudo config/bin/bootstrap-apt / # HTTPS sources and CA update before any other APT work
 sudo apt install make        # only needed the first time
 sudo make deps               # FAI, QEMU, OVMF, cloud-image-utils, xorriso, shellcheck, ...
 make check                   # lint scripts + user-data, resolve the package lists (no root)
 make packages                # see exactly what cloud and metal machines will get
 ```
+
+The bootstrap needs an existing trusted CA bundle. On a minimal host without
+one, supply it explicitly: `sudo config/bin/bootstrap-apt / /path/to/ca-bundle.crt`.
+Do not fetch that initial trust over an unverified connection.
 
 ### 2. Cloud image
 
@@ -476,14 +481,39 @@ run `/usr/local/libexec/install-user-agents` as `jonathan` (without sudo).
 Retries skip working installations. New machines receive the releases current
 at first boot; Debian's `APT_SNAPSHOT` does not pin these tools.
 
+## HTTPS repositories and certificate bootstrap
+
+All Debian mirrors, security updates, backports, snapshots, NodeSource and
+Docker repositories use HTTPS. Before APT runs, `config/bin/prepare-apt`
+converts HTTP URLs in both `.list` and deb822 `.sources` files and configures
+APT to use the CA bundle with peer and hostname verification enabled.
+Local `file:` repositories are preserved.
+
+`make deps` and image builds refresh the build host's CA package first.
+CI seeds its minimal Debian containers from the runner's read-only CA bundle
+before their first APT call. For a minimal local build host, set
+`CA_BUNDLE=/path/to/trusted-ca-bundle.crt` when invoking `make`.
+
+The ISO embeds `ca-certificates` in its installer and base-system archive
+using debootstrap's `--include` option. The target therefore receives the
+package and trust store when FAI extracts the base system. If the target has
+no bundle, the installer supplies its own trusted bundle without a download.
+Before FAI's `updatebase` task, `hooks/updatebase.DEBIAN` secures every target
+repository, refreshes signed indexes over HTTPS, and installs or upgrades
+`ca-certificates` as the first package operation. A failed refresh stops the
+installation. Only then do the normal base upgrade and package installation
+run. The final sources are normalized again after snapshot configuration is
+removed. No certificate-verification bypass or HTTP bootstrap is used.
+
 ## Node.js without npm
 
 Every cloud image and metal installation includes Node.js from NodeSource's
 26.x repository, listed with the other server packages in
 `config/package_config/SERVER`. Before package installation,
-`hooks/instsoft.SERVER` installs the repository's HTTPS certificate prerequisite,
-copies its signing key, configures the repository with a scoped `Signed-By` key
-and package preference, and installs `/etc/dpkg/dpkg.cfg.d/omit-npm`. The dpkg
+`hooks/updatebase.DEBIAN` refreshes the HTTPS certificate prerequisite first.
+`hooks/instsoft.SERVER` copies the signing key, configures the repository
+with a scoped `Signed-By` key and package preference, and installs
+`/etc/dpkg/dpkg.cfg.d/omit-npm`. The dpkg
 exclusions leave out bundled npm and npx, including npm's dependency tree, on
 installation and subsequent upgrades. Node.js runs without them.
 

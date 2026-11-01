@@ -4,11 +4,14 @@
 # updates. Runs after LAST/50-misc, which re-copies the install-time sources.
 
 ifclass SERVER || exit 0
-[ -n "$APT_SNAPSHOT" ] || exit 0
-
-fcopy -SM -c DEBIAN_DEFAULT /etc/apt/sources.list
-if ifclass METAL; then
-    echo "deb $apt_cdn/debian $release-backports main non-free-firmware" >> "$target/etc/apt/sources.list"
+if [ -n "$APT_SNAPSHOT" ]; then
+    fcopy -SM -c DEBIAN_DEFAULT /etc/apt/sources.list
+    if ifclass METAL; then
+        echo "deb $apt_cdn/debian $release-backports main non-free-firmware" >> "$target/etc/apt/sources.list"
+    fi
+    rm -rf $target/var/lib/apt/lists/*      # stale snapshot indexes; refreshed on first apt update
+    echo "apt sources switched from snapshot $APT_SNAPSHOT to live mirrors"
 fi
-rm -rf $target/var/lib/apt/lists/*      # stale snapshot indexes; refreshed on first apt update
-echo "apt sources switched from snapshot $APT_SNAPSHOT to live mirrors"
+
+# LAST/50-misc can re-copy sources, so enforce HTTPS in the finished system too.
+"$FAI/bin/prepare-apt" "$target"

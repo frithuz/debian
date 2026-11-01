@@ -12,6 +12,7 @@
 CONFIG    := $(CURDIR)/config
 BUILD     := $(CURDIR)/build
 USERDATA  := $(CONFIG)/cloud-init/user-data
+CA_BUNDLE ?= /etc/ssl/certs/ca-certificates.crt
 # Must match default_user in config/files/etc/cloud/cloud.cfg.d/90-fai-defaults.cfg/SERVER
 SSH_USER  := jonathan
 SUDO      ?= $(if $(filter 0,$(shell id -u)),,sudo)
@@ -49,7 +50,7 @@ FAI_HOST    := cloud-$(ARCH)
 # Rebuild artifacts whenever anything in the config space changes.
 CONFIG_FILES := $(shell find $(CONFIG) -type f)
 
-.PHONY: help deps check packages userdata-ready motd-ready cloud metal-iso nfsroot \
+.PHONY: help deps apt-ready build-apt-ready check packages userdata-ready motd-ready cloud metal-iso nfsroot \
         test-cloud test-metal boot-metal ssh clean
 
 help:
@@ -66,7 +67,14 @@ help:
 
 QEMU_PKGS_amd64 := qemu-system-x86 ovmf
 QEMU_PKGS_arm64 := qemu-system-arm qemu-efi-aarch64
-deps:
+apt-ready:
+	$(SUDO) $(CONFIG)/bin/bootstrap-apt / "$(CA_BUNDLE)"
+
+build-apt-ready:
+	$(native_only)
+	$(SUDO) $(CONFIG)/bin/bootstrap-apt / "$(CA_BUNDLE)"
+
+deps: apt-ready
 	$(SUDO) apt-get install -y --no-install-recommends make fai-server fai-setup-storage \
 	    debootstrap xorriso squashfs-tools dosfstools mtools zstd ca-certificates mount udev \
 	    qemu-utils $(QEMU_PKGS_$(HOST_ARCH)) cloud-image-utils openssh-client shellcheck ipxe-qemu
@@ -83,6 +91,7 @@ check: motd-ready
 	@bash test/check-issue-net.sh
 	@bash test/check-motd.sh
 	@bash test/check-installer-boot.sh
+	@bash test/check-apt-https.sh
 	@if command -v lvmconfig >/dev/null; then bash test/check-lvm-autoactivation.sh; \
 	 else echo "installer LVM policy: skipped (install lvm2 to check)"; fi
 	@cd $(CONFIG) && for f in scripts/*/* hooks/*.* bin/*; do [ -x "$$f" ] || { echo "not executable: $$f"; exit 1; }; done && echo "scripts executable: ok"
@@ -132,7 +141,7 @@ $(BUILD):
 # ---- cloud ------------------------------------------------------------------
 
 cloud: $(CLOUD_IMAGE)
-$(CLOUD_IMAGE): $(CONFIG_FILES) | $(BUILD) motd-ready
+$(CLOUD_IMAGE): $(CONFIG_FILES) | $(BUILD) motd-ready build-apt-ready
 	$(native_only)
 	$(SUDO) rm -f $@
 	$(SUDO) fai-diskimage -v -u $(FAI_HOST) -S $(CLOUD_SIZE) \
@@ -154,7 +163,7 @@ $(CLOUD_IMAGE): $(CONFIG_FILES) | $(BUILD) motd-ready
 #   its packages unauthenticated over plain HTTP. Debian's signed FAI is used instead.
 # Next to the nfsroot so `make clean` keeps it and doesn't force an nfsroot rebuild.
 FAI_ETC := /srv/fai/etc
-$(FAI_ETC)/NFSROOT: Makefile $(wildcard /etc/fai/NFSROOT /etc/fai/*.conf /etc/fai/grub.cfg*)
+$(FAI_ETC)/NFSROOT: Makefile $(CONFIG)/bin/prepare-fai-https $(CONFIG)/bin/https-apt-sources $(wildcard /etc/fai/NFSROOT /etc/fai/*.conf /etc/fai/grub.cfg* /etc/fai/apt/sources.list /etc/fai/apt/sources.list.d/*)
 	$(SUDO) rm -rf $(FAI_ETC)
 	$(SUDO) mkdir -p $(dir $(FAI_ETC))
 	$(SUDO) cp -a /etc/fai $(FAI_ETC)
@@ -164,9 +173,10 @@ $(FAI_ETC)/NFSROOT: Makefile $(wildcard /etc/fai/NFSROOT /etc/fai/*.conf /etc/fa
 	$(SUDO) sed -i '/fai-project\.org/d' $(FAI_ETC)/apt/sources.list
 	# Use backports for the installer kernel and RTL8127 firmware.
 	$(SUDO) sed -i -E 's#^(linux-image-(amd64|arm64))$$#\1/trixie-backports#; s#firmware-realtek([[:space:]]|$$)#firmware-realtek/trixie-backports\1#g' $@
-	echo 'deb http://deb.debian.org/debian trixie-backports main non-free-firmware' | $(SUDO) tee -a $(FAI_ETC)/apt/sources.list >/dev/null
+	echo 'deb https://deb.debian.org/debian trixie-backports main non-free-firmware' | $(SUDO) tee -a $(FAI_ETC)/apt/sources.list >/dev/null
+	$(SUDO) $(CONFIG)/bin/prepare-fai-https $(FAI_ETC)
 
-/srv/fai/nfsroot/.THIS_IS_THE_FAI_NFSROOT: $(FAI_ETC)/NFSROOT
+/srv/fai/nfsroot/.THIS_IS_THE_FAI_NFSROOT: $(FAI_ETC)/NFSROOT | build-apt-ready
 	$(SUDO) fai-make-nfsroot -v -f -C $(FAI_ETC)
 
 # Patch the installed Dracut scripts and rebuild the initramfs that fai-cd copies.

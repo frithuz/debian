@@ -26,4 +26,12 @@ username=''
 USERPW=''
 
 # set a default
-FAI_DEBOOTSTRAP="trixie http://deb.debian.org/debian"
+FAI_DEBOOTSTRAP="trixie https://deb.debian.org/debian"
+# Preserve other bootstrap options/packages; debootstrap uses the last
+# --include argument, so adding a separate one would discard earlier packages.
+case " ${FAI_DEBOOTSTRAP_OPTS:-} " in
+    *' --include='*|*' --include '*)
+        FAI_DEBOOTSTRAP_OPTS=${FAI_DEBOOTSTRAP_OPTS//--include=/--include=ca-certificates,}
+        FAI_DEBOOTSTRAP_OPTS=${FAI_DEBOOTSTRAP_OPTS//--include /--include ca-certificates,} ;;
+    *) FAI_DEBOOTSTRAP_OPTS="${FAI_DEBOOTSTRAP_OPTS:-} --include=ca-certificates" ;;
+esac

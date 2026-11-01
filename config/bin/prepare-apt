@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# Seed trust without a network request, then secure all repositories. ROOT
+# may be / for the build host, or the mounted target before its first APT use.
+set -euo pipefail
+root=${1:?usage: prepare-apt ROOT [CA_BUNDLE]}
+seed=${2:-/etc/ssl/certs/ca-certificates.crt}
+bundle=$root/etc/ssl/certs/ca-certificates.crt
+if [[ ! -s $bundle ]]; then
+    [[ -s $seed ]] || {
+        echo "ERROR: no CA trust bundle; supply CA_BUNDLE from a trusted host" >&2; exit 1;
+    }
+    install -D -m 0644 "$seed" "$bundle"
+fi
+grep -q '^-----BEGIN CERTIFICATE-----' "$bundle" || {
+    echo "ERROR: invalid CA trust bundle: $bundle" >&2; exit 1;
+}
+"$(dirname "$0")/https-apt-sources" "$root/etc/apt"
+mkdir -p "$root/etc/apt/apt.conf.d"
+cat > "$root/etc/apt/apt.conf.d/99-frithuz-https" <<'EOF'
+// Use the seeded bundle even before openssl creates its default trust links.
+Acquire::https::CaInfo "/etc/ssl/certs/ca-certificates.crt";
+Acquire::https::Verify-Peer "true";
+Acquire::https::Verify-Host "true";
+EOF
+chmod 0644 "$root/etc/apt/apt.conf.d/99-frithuz-https"

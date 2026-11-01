@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# The first network/package operations use HTTPS and update CA certificates.
+set -euo pipefail
+root=${1:?usage: bootstrap-apt ROOT [CA_BUNDLE]}
+"$(dirname "$0")/prepare-apt" "$@"
+chroot "$root" apt-get --error-on=any update
+DEBIAN_FRONTEND=noninteractive chroot "$root" apt-get -y --no-install-recommends install ca-certificates

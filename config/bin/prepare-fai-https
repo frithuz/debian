@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# Configure FAI before it downloads the installer/base system. ca-certificates
+# becomes part of base.tar, which the ISO extracts onto the installation target.
+set -euo pipefail
+cfg=${1:?usage: prepare-fai-https FAI_ETC_DIR}
+"$(dirname "$0")/https-apt-sources" "$cfg/apt"
+sed -i 's|http://|https://|g' "$cfg/nfsroot.conf"
+if ! grep -q '^# Frithuz HTTPS bootstrap$' "$cfg/nfsroot.conf"; then
+    cat >> "$cfg/nfsroot.conf" <<'EOF'
+
+# Frithuz HTTPS bootstrap
+case " ${FAI_DEBOOTSTRAP_OPTS:-} " in
+    *' --include='*|*' --include '*)
+        FAI_DEBOOTSTRAP_OPTS=${FAI_DEBOOTSTRAP_OPTS//--include=/--include=ca-certificates,}
+        FAI_DEBOOTSTRAP_OPTS=${FAI_DEBOOTSTRAP_OPTS//--include /--include ca-certificates,} ;;
+    *) FAI_DEBOOTSTRAP_OPTS="${FAI_DEBOOTSTRAP_OPTS:-} --include=ca-certificates" ;;
+esac
+EOF
+fi

@@ -23,3 +23,8 @@ else
 fi
 
 echo force-unsafe-io > $target/etc/dpkg/dpkg.cfg.d/unsafe-io
+
+# repository has already populated the target's APT configuration. Bootstrap
+# trust from the installer/build host and refresh certificates before FAI's
+# updatebase task or any instsoft hook can use APT.
+"$FAI/bin/bootstrap-apt" "$target" || exit $?

@@ -8,8 +8,7 @@ case ${FAI_ACTION:-} in
     *) exit 0 ;;
 esac
 
-# The base system may not yet have certificates for the HTTPS repository.
-$ROOTCMD apt-get -y --no-install-recommends install ca-certificates
+# updatebase.DEBIAN has already refreshed ca-certificates over HTTPS.
 fcopy -M /etc/apt/keyrings/nodesource.asc
 fcopy -M /etc/apt/sources.list.d/nodesource.sources
 fcopy -M /etc/apt/keyrings/docker.asc

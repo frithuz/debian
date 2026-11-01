@@ -35,13 +35,15 @@ jobs:
     runs-on: ubuntu-26.04
     container:
       image: debian:trixie@sha256:2dc419c6d7fe3dad0a2f9fd469c34cc90b0f9ba642d8fde837fe3d7d34a0e7f1
+      volumes:
+        - /etc/ssl/certs:/run/frithuz-host-certs:ro
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Install lint tools
         run: |
-          apt-get update
+          config/bin/bootstrap-apt / /run/frithuz-host-certs/ca-certificates.crt
           apt-get install -y --no-install-recommends make shellcheck bsdextrautils curl xz-utils ca-certificates lvm2
       - run: make check
       - name: Package names exist in Debian, NodeSource and Docker (amd64 + arm64)
@@ -67,6 +69,8 @@ jobs:
     container:
       image: debian:trixie@sha256:2dc419c6d7fe3dad0a2f9fd469c34cc90b0f9ba642d8fde837fe3d7d34a0e7f1
       options: --privileged -v /dev:/dev
+      volumes:
+        - /etc/ssl/certs:/run/frithuz-host-certs:ro
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -74,7 +78,7 @@ jobs:
 
       - name: Install tooling
         run: |
-          apt-get update
+          config/bin/bootstrap-apt / /run/frithuz-host-certs/ca-certificates.crt
           apt-get install -y --no-install-recommends make procps
           make deps
 
@@ -162,13 +166,15 @@ jobs:
     container:
       image: debian:trixie@sha256:2dc419c6d7fe3dad0a2f9fd469c34cc90b0f9ba642d8fde837fe3d7d34a0e7f1
       options: --privileged -v /dev:/dev
+      volumes:
+        - /etc/ssl/certs:/run/frithuz-host-certs:ro
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Install tooling
         run: |
-          apt-get update
+          config/bin/bootstrap-apt / /run/frithuz-host-certs/ca-certificates.crt
           apt-get install -y --no-install-recommends make procps
           make deps
       - name: Host facts
