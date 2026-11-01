@@ -335,7 +335,7 @@ sudo dd if=build/metal-amd64.iso of=/dev/sdX bs=4M status=progress conv=fsync
 
 Boot the server from it in **UEFI** mode, with network access. **The installer wipes
 the selected internal disk.** USB, removable, read-only, in-use disks (including
-mounted partitions and active swap), and disks smaller than 48 GiB are excluded.
+mounted partitions and active swap), and disks smaller than 56 GiB are excluded.
 Interactive installs show a target-disk menu with each eligible drive's size,
 model, and serial number. Cancelling stops before partitioning. Unattended installs
 require exactly one eligible disk, or an explicit
@@ -343,9 +343,10 @@ require exactly one eligible disk, or an explicit
 bypasses the interactive menu; the same exclusions still apply. Use `lsblk` in the
 installer shell to check that the internal drive is detected and identify its path.
 
-The metal layout allocates 35 GiB to `/` and 10 GiB across the separate `/var`,
-log, audit, home, and tmp logical volumes. The LVM partition spans the remaining
-disk, but unused volume-group space stays free for later expansion with `lvextend`.
+The metal layout allocates 35 GiB to `/`, 8 GiB to `/home` for development tools
+and installer staging, and 9 GiB across the separate `/var`, log, audit, and tmp
+logical volumes. The LVM partition spans the remaining disk, but unused
+volume-group space stays free for later expansion with `lvextend`.
 The live installer disables LVM autoactivation so signatures exposed while
 repartitioning cannot activate old volumes and block `pvcreate`. The installed
 system retains normal LVM activation.
@@ -507,6 +508,10 @@ The same first-boot script runs [pnpm's standalone installer](https://pnpm.io/in
 as `jonathan`. It sets `PNPM_HOME=~/.local/share/pnpm` and adds its `bin`
 directory to his login and non-interactive SSH PATHs. pnpm is installed without
 npm and can install global tools into this user-owned directory.
+
+The installers use a private temporary directory under `~/.cache`, which is
+removed when setup exits. Their downloaded executables can run there while
+`/tmp` remains mounted `noexec`.
 
 This is user software provisioned after installation, separate from the Debian
 package contract and manifest. Failures are reported by `cloud-init status

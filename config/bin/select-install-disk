@@ -21,9 +21,9 @@ while read -r disk type; do
         echo "Excluding $disk: removable, read-only, or USB device" >&2
         continue
     fi
-    # The layout needs 46 GiB for LVM plus /boot and the EFI partition.
-    if [[ ! $size =~ ^[0-9]+$ ]] || (( size < 48 * 1024 * 1024 * 1024 )); then
-        echo "Excluding $disk: smaller than 48 GiB or size unknown" >&2
+    # The layout needs 53 GiB for LVM plus /boot and the EFI partition.
+    if [[ ! $size =~ ^[0-9]+$ ]] || (( size < 56 * 1024 * 1024 * 1024 )); then
+        echo "Excluding $disk: smaller than 56 GiB or size unknown" >&2
         continue
     fi
     # Includes mounted partitions and device-mapper descendants (e.g. Ventoy),

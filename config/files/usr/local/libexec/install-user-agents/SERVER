@@ -25,7 +25,11 @@ for rc in .bashrc .profile; do
     fi
 done
 
-work=$(mktemp -d)
+# Native installers execute downloaded binaries while setting themselves up.
+# /tmp is noexec on hardened images; keep their private workspace under /home.
+mkdir -p "$HOME/.cache"
+work=$(mktemp -d "$HOME/.cache/user-agents.XXXXXX")
+export TMPDIR=$work
 trap 'rm -rf "$work"' EXIT
 for tool in claude codex pnpm; do
     tool_path="$HOME/.local/bin/$tool"

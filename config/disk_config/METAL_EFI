@@ -1,7 +1,7 @@
 # Physical server, UEFI, GPT + LVM, CIS-style separate mounts.
 # WIPES disk1 (the eligible internal disk selected by partition.METAL.sh).
 # USB, removable, read-only, mounted and undersized disks are excluded.
-# Interactive installs show a disk selector. Needs >= 48 GiB.
+# Interactive installs show a disk selector. Needs >= 56 GiB.
 #
 # The VG is deliberately not filled: grow LVs later with
 #   lvextend -r -L +10G <volume-group>/var
@@ -13,7 +13,7 @@ disk_config disk1 disklabel:gpt bootable:1 fstabkey:uuid align-at:1M
 
 p=efi    /boot/efi 512M  vfat  rw,umask=0077
 p=boot   /boot     1G    ext4  rw,noatime,nodev,nosuid
-p=system -         46G-  -     -
+p=system -         53G-  -     -
 
 disk_config lvm fstabkey:uuid
 
@@ -22,5 +22,6 @@ vg0-root   /              35G   ext4  rw,noatime,errors=remount-ro
 vg0-var    /var            4G   ext4  rw,noatime,nodev,nosuid
 vg0-log    /var/log        2G   ext4  rw,noatime,nodev,nosuid,noexec
 vg0-audit  /var/log/audit  1G   ext4  rw,noatime,nodev,nosuid,noexec
-vg0-home   /home           1G   ext4  rw,noatime,nodev,nosuid
+# Native development tools need room for both installer staging and releases.
+vg0-home   /home           8G   ext4  rw,noatime,nodev,nosuid
 vg0-tmp    /tmp            2G   ext4  rw,noatime,nodev,nosuid,noexec

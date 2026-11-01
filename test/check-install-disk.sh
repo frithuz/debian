@@ -71,6 +71,8 @@ for properties in \
     '0|0|4000000000|sata|-' \
     '0|0|34359738368|nvme|-' \
     '0|0|51539607551|nvme|-' \
+    '0|0|51539607552|nvme|-' \
+    '0|0|60129542143|nvme|-' \
     '0|0|unknown|sata|-' \
     '0|0|64000000000|sata|ERROR'; do
     printf '/dev/sda|disk|%s\n' "$properties" > "$DISK_FIXTURE"
@@ -125,7 +127,7 @@ refused
 # QEMU's single blank NVMe disk remains eligible, as does internal eMMC.
 printf '/dev/nvme0n1|disk|0|0|68719476736|nvme|-\n' > "$DISK_FIXTURE"
 selected /dev/nvme0n1
-printf '/dev/nvme0n1|disk|0|0|51539607552|nvme|-\n' > "$DISK_FIXTURE"
+printf '/dev/nvme0n1|disk|0|0|60129542144|nvme|-\n' > "$DISK_FIXTURE"
 selected /dev/nvme0n1
 printf '/dev/mmcblk0|disk|0|0|64000000000||-\n' > "$DISK_FIXTURE"
 selected /dev/mmcblk0
