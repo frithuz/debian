@@ -133,7 +133,7 @@ $(CLOUD_IMAGE): $(CONFIG_FILES) | $(BUILD)
 #   its packages unauthenticated over plain HTTP. Debian's signed FAI is used instead.
 # Next to the nfsroot so `make clean` keeps it and doesn't force an nfsroot rebuild.
 FAI_ETC := /srv/fai/etc
-$(FAI_ETC)/NFSROOT: $(wildcard /etc/fai/NFSROOT /etc/fai/*.conf /etc/fai/grub.cfg*)
+$(FAI_ETC)/NFSROOT: Makefile $(wildcard /etc/fai/NFSROOT /etc/fai/*.conf /etc/fai/grub.cfg*)
 	$(SUDO) rm -rf $(FAI_ETC)
 	$(SUDO) mkdir -p $(dir $(FAI_ETC))
 	$(SUDO) cp -a /etc/fai $(FAI_ETC)
@@ -141,6 +141,8 @@ $(FAI_ETC)/NFSROOT: $(wildcard /etc/fai/NFSROOT /etc/fai/*.conf /etc/fai/grub.cf
 	$(SUDO) sed -i '/^FAI_ROOTPW=/d' $(FAI_ETC)/nfsroot.conf
 	echo "FAI_ROOTPW='!'" | $(SUDO) tee -a $(FAI_ETC)/nfsroot.conf >/dev/null
 	$(SUDO) sed -i '/fai-project\.org/d' $(FAI_ETC)/apt/sources.list
+	# Network installs need DHCP even though the live root is on local media.
+	$(SUDO) sed -i '/^[[:space:]]*linux[[:space:]]/s/$$/ ip=dhcp rd.neednet=1/' $(FAI_ETC)/grub.cfg
 
 /srv/fai/nfsroot/.THIS_IS_THE_FAI_NFSROOT: $(FAI_ETC)/NFSROOT
 	$(SUDO) fai-make-nfsroot -v -C $(FAI_ETC)
@@ -151,7 +153,7 @@ nfsroot: /srv/fai/nfsroot/.THIS_IS_THE_FAI_NFSROOT
 # (same sources as the cloud build, including the APT_SNAPSHOT pin).
 # The nfsroot (and so the ISO) is always the build host's architecture.
 metal-iso: $(METAL_ISO)
-$(METAL_ISO): $(CONFIG_FILES) | userdata-ready $(BUILD)
+$(METAL_ISO): Makefile $(CONFIG_FILES) | userdata-ready $(BUILD)
 	$(native_only)
 	$(MAKE) nfsroot
 	$(SUDO) fai-cd -f -M -C $(FAI_ETC) -c $(CONFIG) $@

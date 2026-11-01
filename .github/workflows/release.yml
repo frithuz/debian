@@ -4,7 +4,7 @@
 # The images come from build.yml, called as a reusable workflow, so a release gets the
 # same lint, native builds and boot tests as any push to main. The draft gets every
 # cloud-<arch>.qcow2 and metal-<arch>.iso plus SHA256SUMS covering them. The tag is
-# created on the built commit when the draft is published, not before.
+# created explicitly on the built commit before creating the draft.
 #
 # The tag defaults to date@<UTC date>/run@<run number>, e.g. date@2026-10-31/run@42;
 # set the optional input to use a different one.
@@ -56,10 +56,16 @@ jobs:
           TAG="${INPUT_TAG:-date@$(date -u +%F)/run@$GITHUB_RUN_NUMBER}"
           git check-ref-format "refs/tags/$TAG" || { echo "invalid tag: $TAG" >&2; exit 1; }
           echo "Tag: $TAG"
+          # A release targeting an unreferenced commit that changed workflows
+          # requires workflows:write, which GITHUB_TOKEN cannot have. Create
+          # the ref first with contents:write and require it for the release.
+          # The API also refuses an existing tag instead of moving it.
+          gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" \
+            -f "ref=refs/tags/$TAG" -f "sha=$GITHUB_SHA"
           gh release create "$TAG" \
             --repo "$GITHUB_REPOSITORY" \
             --draft \
-            --target "$GITHUB_SHA" \
+            --verify-tag \
             --title "$TAG" \
             --generate-notes \
             dist/*.qcow2 dist/*.iso dist/SHA256SUMS

@@ -357,8 +357,9 @@ the ISO (metal seeds come from it) and the tests, but not the cloud image.
 The tag defaults to `date@<UTC date>/run@<run number>` (e.g. `date@2026-10-31/run@42`);
 the optional `tag` input overrides it. It runs the whole `build` workflow on the selected branch,
 then creates a **draft** release with `cloud-<arch>.qcow2`, `metal-<arch>.iso` and a
-`SHA256SUMS` file for all of them. Review the draft and publish it; the tag is created
-on the built commit at that point. Verify a download with `sha256sum -c --ignore-missing SHA256SUMS`.
+`SHA256SUMS` file for all of them. The workflow creates the tag on the built commit
+before creating the draft; an existing tag is rejected. Review the draft and publish it.
+Verify a download with `sha256sum -c --ignore-missing SHA256SUMS`.
 
 ## Publishing this repository
 

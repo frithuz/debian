@@ -120,6 +120,9 @@ metal-install)
             -extract /boot/initrd.img "$work/initrd.img" 2>/dev/null
         args="FAI_FLAGS=verbose,halt FAI_ACTION=install FAI_CONFIG_SRC=detect://"
         args+=" rd.live.overlay.overlayfs root=live:CDLABEL=FAI_CD hostname=metal-test"
+        # The ISO has no package mirror (-M); bring up DHCP in dracut so FAI
+        # has a route and DNS before it updates the target's package indexes.
+        args+=" ip=dhcp rd.neednet=1"
         args+=" console=tty0 console=$serial_tty"
         # shellcheck disable=SC2046
         exec $qemu "${common[@]}" $(uefi metal) $(console) \
