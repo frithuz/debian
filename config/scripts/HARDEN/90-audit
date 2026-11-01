@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
-# Run lynis against the freshly built system and save the report in the FAI logs.
+# Run lynis in the native cloud build and save the report in the FAI logs.
+# Metal installs retain cis-check; repeating this informational audit under
+# QEMU's CPU emulation adds several minutes without gating the install.
 # Informational only: it never fails the build. To gate on a score, compare
 # $index against a threshold and set error=1.
 
 ifclass HARDEN || exit 0
+ifclass CLOUD || exit 0
 [ -x $target/usr/sbin/lynis ] || exit 0
 
 $ROOTCMD lynis audit system --quick --no-colors --no-log \

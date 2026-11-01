@@ -349,6 +349,11 @@ the ISO (metal seeds come from it) and the tests, but not the cloud image.
 - **KVM:** the "Host facts" step prints whether `/dev/kvm` is available. x64 runners
   have it. If the Arm64 runner doesn't, its boot tests still run, but emulated, so they're
   much slower (the cloud job allows 150 minutes, the metal job 210).
+- **Install time:** package-triggered initramfs generation is deferred during fresh
+  installs. The real command is restored and each kernel's initramfs is generated
+  once after system configuration, before GRUB setup. Installed systems retain
+  normal initramfs updates. The informational Lynis audit runs only in the native
+  cloud build; metal installs still run the CIS checks and first-boot AIDE baseline.
 - **Artifacts:** reports and FAI logs on every run, images on non-PR runs. All are kept for 1 day.
   Any signed-in GitHub user can download artifacts of a public repository; see below.
 - **Action pins:** third-party actions are pinned to commit SHAs. To update, resolve the

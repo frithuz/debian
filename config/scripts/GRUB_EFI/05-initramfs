@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# Package installation has finished and all SERVER/HARDEN/CLOUD/METAL settings
+# are in place. Generate initramfs once per kernel, before GRUB searches /boot.
+set -euo pipefail
+
+[[ $FAI_ACTION == install || $FAI_ACTION == dirinstall ]] || exit 0
+
+# Fail rather than ship a target with updates still deferred or no generator.
+test -x "$target/usr/sbin/update-initramfs.fai-original"
+rm "$target/usr/sbin/update-initramfs"
+$ROOTCMD dpkg-divert --local --remove --rename \
+    --divert /usr/sbin/update-initramfs.fai-original /usr/sbin/update-initramfs
+
+# -u -k all ignores kernels whose initrd hasn't been created yet. Use -c with
+# an explicit version for every installed kernel, including kernels in the base.
+shopt -s nullglob
+kernels=("$target"/boot/vmlinuz-*)
+if (( ${#kernels[@]} == 0 )); then
+    echo "ERROR: no installed kernels to generate initramfs for" >&2
+    exit 1
+fi
+for kernel in "${kernels[@]}"; do
+    version=${kernel##*/vmlinuz-}
+    $ROOTCMD update-initramfs -c -k "$version"
+    test -s "$target/boot/initrd.img-$version"
+done

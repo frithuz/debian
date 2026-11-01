@@ -9,7 +9,7 @@ auditd                   # 6.2     (Level 2, kept: cheap and useful)
 libpam-tmpdir
 needrestart
 debsums
-lynis                    # second opinion; report in the FAI logs
+lynis                    # second opinion; cloud build report in the FAI logs
 
 # not allowed / not needed on a CIS server
 PACKAGES remove

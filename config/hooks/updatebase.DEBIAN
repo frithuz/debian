@@ -1,5 +1,19 @@
 #!/usr/bin/env bash
 
+# Defer both kernel postinst (-c) and package-triggered (-u) initramfs builds.
+# update_initramfs=no only suppresses -u. Restore the real command and build
+# once per kernel in GRUB_EFI/05-initramfs, after configuring the target.
+# Never defer updates on an already running system.
+if [[ $FAI_ACTION == install || $FAI_ACTION == dirinstall ]]; then
+    $ROOTCMD dpkg-divert --local --add --rename \
+        --divert /usr/sbin/update-initramfs.fai-original /usr/sbin/update-initramfs || exit $?
+    cat > "$target/usr/sbin/update-initramfs" <<'EOF' || exit $?
+#!/bin/sh
+echo "update-initramfs: deferred until GRUB_EFI/05-initramfs"
+EOF
+    chmod 0755 "$target/usr/sbin/update-initramfs" || exit $?
+fi
+
 if [ -n "$APTPROXY" ]; then
     echo "Acquire::http::Proxy \"$APTPROXY\";" > $target/etc/apt/apt.conf.d/02proxy
 else
