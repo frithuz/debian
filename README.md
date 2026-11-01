@@ -458,6 +458,13 @@ The committed NodeSource signing key comes from
 
 ## How FAI composes a machine: classes
 
+The console login screen shows the current hostname, IPv4 and IPv6 addresses,
+and SSH username before login. `agetty` expands
+`files/etc/issue.d/50-network.issue/SERVER` and refreshes the displayed addresses
+when they change, including when DHCP completes after the login prompt appears.
+This applies to console logins only; the SSH banner and post-login MOTD are
+unchanged.
+
 Metal installs use `frithuz-<mac>` as their hostname, for example
 `frithuz-001c42f09e11`. The suffix is the active Ethernet NIC's MAC address,
 in lowercase without colons. Prefer the NIC used for IPv4 egress, then IPv6
