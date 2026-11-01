@@ -99,7 +99,15 @@ stop_qemu() {
     if [[ -n $serial_pid ]]; then sleep 1; kill "$serial_pid" 2>/dev/null || true; fi
     qemu_pid='' serial_pid=''
 }
-qemu_running() { [[ -n $qemu_pid && -e /proc/$qemu_pid ]]; }
+qemu_running() {
+    local state
+    [[ -n $qemu_pid ]] || return 1
+    # QEMU daemonizes, so container PID 1 must reap it. Some CI containers
+    # leave the exited process as a zombie: /proc/PID and kill -0 still
+    # succeed even though the guest has powered off.
+    state=$(ps -o stat= -p "$qemu_pid" 2>/dev/null) || return 1
+    [[ -n $state && $state != Z* && $state != X* ]]
+}
 
 cleanup() {
     local rc=$?
