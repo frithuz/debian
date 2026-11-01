@@ -1,0 +1,18 @@
+// Managed by FAI (class HARDEN). Keep Debian's base/security origins from
+// 50unattended-upgrades and add the repositories used by this system.
+APT::Periodic::Enable "1";
+APT::Periodic::Update-Package-Lists "1";
+APT::Periodic::Unattended-Upgrade "1";
+
+Unattended-Upgrade::Origins-Pattern {
+    "origin=Debian,codename=${distro_codename}-updates,label=Debian";
+    // Docker publishes Suite, but no Codename, in its Release metadata.
+    "origin=Docker,label=Docker CE,archive=${distro_codename},component=stable,site=download.docker.com";
+    // NodeSource uses nodistro for every Debian release. The configured source
+    // selects Node.js 26.x; its per-repository Signed-By key remains required.
+    "origin=. nodistro,label=. nodistro,archive=nodistro,component=main,site=deb.nodesource.com";
+};
+
+// Install kernel updates automatically; activate them with a planned reboot.
+// See README: Automatic updates and reboots.
+Unattended-Upgrade::Automatic-Reboot "false";

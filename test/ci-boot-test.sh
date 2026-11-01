@@ -256,6 +256,7 @@ sudo_version=$(vm 'sudo --version' 2>&1) || true
 [[ $sudo_version == sudo-rs* ]] || bad "sudo is not sudo-rs: $(head -1 <<< "$sudo_version")"
 # -n: fail instead of prompting. jonathan has no password, so a prompt means no NOPASSWD rule.
 vm 'sudo -n true' || bad "$user has no passwordless sudo"
+
 # sbin is on $user's PATH (DEBIAN/30-sudo-rs), in plain ssh sessions and login shells.
 # sudo searches the caller's PATH, so without it `sudo cis-check` is "command not found".
 for sh in 'echo "$PATH"' 'bash -lc '\''echo "$PATH"'\'''; do
@@ -305,6 +306,30 @@ if [[ $kind == metal ]]; then
         vm "findmnt -n '$m' >/dev/null" || bad "$m is not a separate mount"
     done
     vm 'sudo test -s /var/lib/cloud/seed/nocloud/user-data' || bad "no NoCloud seed baked into the install"
+fi
+
+phase "automatic updates"
+vm 'set -e
+    test -s /etc/apt/apt.conf.d/52-frithuz-unattended-upgrades
+    for timer in apt-daily.timer apt-daily-upgrade.timer; do
+        sudo systemctl is-enabled --quiet "$timer"
+        sudo systemctl is-active --quiet "$timer"
+    done
+    /usr/bin/python3 - <<"PY"
+import apt_pkg
+apt_pkg.init_config()
+for key in ("Enable", "Update-Package-Lists", "Unattended-Upgrade"):
+    assert apt_pkg.config.find_i("APT::Periodic::" + key) == 1, key
+assert not apt_pkg.config.find_b("Unattended-Upgrade::Automatic-Reboot", True)
+PY
+    sudo unattended-upgrade --dry-run --debug' > "$out/unattended-upgrades.txt" 2>&1 \
+    || bad "APT update policy, timers, or dry run failed (see unattended-upgrades.txt)"
+if [[ $kind == metal ]]; then
+    vm 'test -s /etc/apt/apt.conf.d/53-frithuz-unattended-backports' \
+        || bad "metal unattended backports policy is missing"
+else
+    vm 'test ! -e /etc/apt/apt.conf.d/53-frithuz-unattended-backports' \
+        || bad "cloud image unexpectedly permits unattended backports updates"
 fi
 
 phase "AIDE first-boot baseline (up to ${aide_timeout}s)"

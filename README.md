@@ -165,6 +165,40 @@ security updates afterwards, which is usually what you want. The manifest shows
 what each machine *started* with. Run `dpkg-query -W` on the machine for its
 current state.
 
+### Automatic updates and reboots
+
+Hardened machines refresh APT indexes and run unattended upgrades daily through
+`apt-daily.timer` and `apt-daily-upgrade.timer`. The managed policy in
+`files/etc/apt/apt.conf.d/52-frithuz-unattended-upgrades/HARDEN` retains Debian's
+base and security updates, and adds `trixie-updates`, Docker's stable repository,
+and the configured NodeSource Node.js 26.x repository. Metal also permits updates
+from `trixie-backports`, including its installed kernel and Realtek firmware.
+Normal APT priorities remain in effect; this does not switch other packages to
+backports. Repository signatures and the existing per-repository keys are still
+required. Vendor repositories do not separate security fixes from other updates,
+so their allowed updates include feature and bug-fix releases too.
+
+Check the policy and the next upgrade without installing anything:
+
+```sh
+sudo apt-get --error-on=any update
+apt-cache policy nodejs docker-ce docker-ce-cli containerd.io
+sudo unattended-upgrade --dry-run --debug
+systemctl list-timers apt-daily.timer apt-daily-upgrade.timer
+sudo tail -n 100 /var/log/unattended-upgrades/unattended-upgrades.log
+```
+
+Automatic reboots are explicitly disabled. After kernel or microcode updates,
+schedule a maintenance window, use `sudo needrestart` to review pending service
+restarts and the running kernel, then run `sudo systemctl reboot` to activate
+the new kernel. Package updates can restart services before that reboot; account
+for this when scheduling workloads. CLI tools installed in the user's home are
+outside APT and need their own update process.
+
+These files apply to newly built images and installs. Existing machines need the
+same APT drop-ins deployed and both APT timers enabled with
+`sudo systemctl enable --now apt-daily.timer apt-daily-upgrade.timer`.
+
 ## Trying it
 
 Everything below runs in local QEMU VMs. Nothing touches your real disks until you

@@ -1,0 +1,6 @@
+// Managed by FAI (classes HARDEN + METAL). Follow updates to the backports
+// kernel and firmware already selected during installation. APT's normal
+// backports priorities still apply; this does not move other packages there.
+Unattended-Upgrade::Origins-Pattern {
+    "origin=Debian Backports,codename=${distro_codename}-backports,label=Debian Backports";
+};

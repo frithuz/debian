@@ -92,6 +92,8 @@ check: motd-ready
 	@bash test/check-motd.sh
 	@bash test/check-installer-boot.sh
 	@bash test/check-apt-https.sh
+	@if command -v unattended-upgrade >/dev/null; then /usr/bin/python3 test/check-unattended-upgrades.py; \
+	 else echo "unattended-upgrades policy: skipped (install unattended-upgrades to check)"; fi
 	@if command -v lvmconfig >/dev/null; then bash test/check-lvm-autoactivation.sh; \
 	 else echo "installer LVM policy: skipped (install lvm2 to check)"; fi
 	@cd $(CONFIG) && for f in scripts/*/* hooks/*.* bin/*; do [ -x "$$f" ] || { echo "not executable: $$f"; exit 1; }; done && echo "scripts executable: ok"

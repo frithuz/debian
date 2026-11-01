@@ -44,7 +44,7 @@ jobs:
       - name: Install lint tools
         run: |
           config/bin/bootstrap-apt / /run/frithuz-host-certs/ca-certificates.crt
-          apt-get install -y --no-install-recommends make shellcheck bsdextrautils curl xz-utils ca-certificates lvm2
+          apt-get install -y --no-install-recommends make shellcheck bsdextrautils curl xz-utils ca-certificates lvm2 unattended-upgrades
       - run: make check
       - name: Package names exist in Debian, NodeSource and Docker (amd64 + arm64)
         run: test/check-package-names.sh
