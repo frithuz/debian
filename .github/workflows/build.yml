@@ -3,21 +3,15 @@
 #
 # Each build job runs in a privileged Debian trixie container with the host's /dev,
 # because FAI needs loop devices (and their partition nodes) and chroots. The container
-# is the Docker Hardened Images dev variant (dhi.io/debian-base:trixie-dev: root, shell,
-# apt with the Debian archive). dhi.io has no anonymous pulls, so the jobs log in with
-# the "dhi" environment's DHI_USERNAME variable (Docker Hub user) and DHI_TOKEN
-# secret (read-only access token).
+# is the official debian:trixie image from Docker Hub.
 #
 # Public repository notes:
 #   - Artifacts of public repos can be downloaded by any signed-in GitHub user.
-#     Nothing secret is built in here: the only secret is the registry token
-#     for pulling the container, and the GRUB password is random per build
-#     (config/secrets/ is never in the repo; see README).
-#   - Pull requests from forks run with a read-only token and no secrets, so they
-#     cannot pull the DHI container and fail at job setup.
+#     Nothing secret is built in here: the workflow uses no secrets, and the GRUB
+#     password is random per build (config/secrets/ is never in the repo; see README).
 #   - Third-party actions are pinned to full commit SHAs; the container image is pinned
 #     to its multi-arch index digest (refresh both when bumping:
-#     docker buildx imagetools inspect dhi.io/debian-base:trixie-dev).
+#     docker buildx imagetools inspect debian:trixie).
 
 name: build
 
@@ -27,11 +21,6 @@ on:
   pull_request:
   workflow_dispatch:
   workflow_call:   # release.yml builds through this workflow
-    secrets:
-      # Environment secrets are empty in a called workflow unless the caller passes them,
-      # even though the jobs set environment: dhi.
-      DHI_TOKEN:
-        required: true
 
 permissions:
   contents: read
@@ -44,12 +33,8 @@ jobs:
   check:
     name: lint + package lists
     runs-on: ubuntu-26.04
-    environment: dhi   # DHI_USERNAME variable + DHI_TOKEN secret for the pull
     container:
-      image: dhi.io/debian-base:trixie-dev@sha256:790849b1e32beaecb770d8f4db4b461aaa46cbb936924eb42f45c791132384cf
-      credentials:
-        username: ${{ vars.DHI_USERNAME }}
-        password: ${{ secrets.DHI_TOKEN }}
+      image: debian:trixie@sha256:2dc419c6d7fe3dad0a2f9fd469c34cc90b0f9ba642d8fde837fe3d7d34a0e7f1
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -78,13 +63,9 @@ jobs:
           - arch: arm64
             runner: ubuntu-26.04-arm
     runs-on: ${{ matrix.runner }}
-    environment: dhi
     timeout-minutes: 150
     container:
-      image: dhi.io/debian-base:trixie-dev@sha256:790849b1e32beaecb770d8f4db4b461aaa46cbb936924eb42f45c791132384cf
-      credentials:
-        username: ${{ vars.DHI_USERNAME }}
-        password: ${{ secrets.DHI_TOKEN }}
+      image: debian:trixie@sha256:2dc419c6d7fe3dad0a2f9fd469c34cc90b0f9ba642d8fde837fe3d7d34a0e7f1
       options: --privileged -v /dev:/dev
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -177,13 +158,9 @@ jobs:
           - arch: arm64
             runner: ubuntu-26.04-arm
     runs-on: ${{ matrix.runner }}
-    environment: dhi
     timeout-minutes: 120
     container:
-      image: dhi.io/debian-base:trixie-dev@sha256:790849b1e32beaecb770d8f4db4b461aaa46cbb936924eb42f45c791132384cf
-      credentials:
-        username: ${{ vars.DHI_USERNAME }}
-        password: ${{ secrets.DHI_TOKEN }}
+      image: debian:trixie@sha256:2dc419c6d7fe3dad0a2f9fd469c34cc90b0f9ba642d8fde837fe3d7d34a0e7f1
       options: --privileged -v /dev:/dev
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
