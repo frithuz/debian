@@ -1,6 +1,11 @@
 # Baseline for every server, cloud or metal.
 # Add your own metapackage here once you have an apt repo, e.g. `mycorp-base`.
 PACKAGES install-norec
+bash
+libpam-modules libpam-runtime
+coreutils procps iproute2 sed grep mawk hostname
+wtmpdb libpam-wtmpdb
+docker-ce docker-ce-cli containerd.io   # Docker's official stable repository
 ca-certificates
 curl
 gnupg

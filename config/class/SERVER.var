@@ -3,6 +3,9 @@
 
 TIMEZONE=UTC
 
+# Login MOTD badge. Written as ENV in /etc/environment; validated by the build.
+MOTD_ENV=production
+
 # No FAI-created accounts: cloud-init creates 'jonathan' on first boot on every
 # machine (files/etc/cloud/cloud.cfg.d/90-fai-defaults.cfg/SERVER), with SSH keys
 # imported from GitHub per config/cloud-init/user-data. Root is locked by scripts/SERVER/10-lock-root.

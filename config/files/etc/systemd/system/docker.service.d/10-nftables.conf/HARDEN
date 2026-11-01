@@ -1,0 +1,6 @@
+# Load the host firewall before Docker creates its own filtering/NAT tables.
+# Restarting nftables flushes those tables, so restart Docker along with it.
+[Unit]
+Wants=nftables.service
+After=nftables.service
+PartOf=nftables.service

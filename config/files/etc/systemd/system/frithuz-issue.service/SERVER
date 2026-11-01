@@ -1,0 +1,12 @@
+[Unit]
+Description=Render the Frithuz SSH banner with this machine's hostname
+After=cloud-init-local.service cloud-init.service cloud-init-network.service
+Before=ssh.service sshd.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/update-frithuz-issue
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

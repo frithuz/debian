@@ -220,6 +220,25 @@ if (( n > 0 )); then log "imported $n key(s) via ssh_import_id"
 else warn "no keys imported from GitHub (network or API rate limit on shared CI IPs?)"; fi
 
 phase "basics"
+vm 'set -e
+    test ! -s /etc/motd
+    test ! -x /etc/update-motd.d/10-uname
+    test -x /etc/update-motd.d/05-frithuz
+    test -x /etc/update-motd.d/92-unattended-upgrades
+    grep -qF "Just be chill." /run/motd.dynamic
+    grep -qF "Jonathan Garbee <garbee@frithuz.com>" /run/motd.dynamic
+    grep -qE "^ENV=(local|dev|test|staging|production)$" /etc/environment
+    sudo systemctl is-active --quiet docker.service containerd.service
+    sudo docker info --format "{{.ServerVersion}}"' \
+    || bad "Frithuz PAM MOTD, environment, or Docker is not configured"
+vm 'set -e
+    sudo systemctl is-active --quiet frithuz-issue.service
+    expected=$(hostname | tr "[:lower:]" "[:upper:]" | tr -d "\n")
+    actual=$(awk "NR == 10 || NR == 11 {printf \"%s\", substr(\$0, 17, 33)}" /etc/issue.net | tr -d " ")
+    test "$actual" = "$expected"
+    grep -qF "*** AUTHORIZED ACCESS ONLY ***" /etc/issue.net
+    test "$(stat -c %a /etc/issue.net)" = 644' \
+    || bad "SSH castle banner is missing or has the wrong hostname or permissions"
 vm '. /etc/os-release; test "$ID" = debian && test "$VARIANT_ID" = frithuz && test "$PRETTY_NAME" = "Frithuz - Debian $VERSION_ID"' \
     || bad "Frithuz OS display metadata is missing or changed Debian identity"
 vm '. /etc/os-release; sudo grep -qF "Frithuz - Debian $VERSION_ID" /boot/grub/grub.cfg' \

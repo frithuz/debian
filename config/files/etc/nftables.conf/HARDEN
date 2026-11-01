@@ -1,6 +1,7 @@
 #!/usr/sbin/nft -f
 # Managed by FAI (class HARDEN). CIS 4.3: nftables, default deny on input and forward.
-# Inbound: SSH only. Outbound: everything allowed. Cloud security groups still apply on top.
+# Inbound: SSH only. Docker's own chains govern published container ports.
+# Outbound: everything allowed. Cloud security groups still apply on top.
 flush ruleset
 
 table inet filter {
@@ -23,6 +24,15 @@ table inet filter {
     }
     chain forward {
         type filter hook forward priority filter; policy drop;
+        # Both this chain and Docker's iptables-nft chains must accept a
+        # packet. Let Docker enforce bridge isolation and published ports;
+        # retain the default drop for unrelated forwarding.
+        iifname "docker*" accept
+        iifname "br-*" accept
+        oifname "docker*" ct state established,related accept
+        oifname "br-*" ct state established,related accept
+        oifname "docker*" ct status dnat accept
+        oifname "br-*" ct status dnat accept
     }
     chain output {
         # Outbound is allowed on purpose: see /etc/cis-check/exceptions (4.3.8/out).

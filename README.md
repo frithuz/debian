@@ -47,10 +47,10 @@ What it covers, by benchmark section:
 | 1.3 AppArmor | `package_config/HARDEN`, `files/etc/default/grub.d/40-cis.cfg` | enabled on the kernel command line |
 | 1.4 bootloader | `HARDEN/50-grub-password` | grub superuser password; entries stay `--unrestricted` so machines boot unattended. `grub.cfg` 0600 |
 | 1.5 process hardening | `files/etc/sysctl.d/90-hardening.conf` | ASLR, ptrace scope, no core dumps |
-| 1.6 banners | `files/etc/{motd,issue,issue.net}` | legal notice, no OS details |
+| 1.6 banners | `files/etc/{motd,issue}`, `scripts/SERVER/06-issue-net` | pre-login legal notice, no OS details; static MOTD empty |
 | 2.x services | `package_config/HARDEN` (removals), `HARDEN/40-services` | no server daemons or insecure clients; chrony only; cron locked down; rsync daemon masked; no MTA |
-| 3.3 network | `files/etc/sysctl.d/90-hardening.conf` | no forwarding/redirects/source routing, rp_filter, syncookies, **no IPv6 router advertisements** |
-| 4.3 firewall | `files/etc/nftables.conf` | nftables only, default deny on input and forward, inbound SSH only. Outbound allowed (exception) |
+| 3.3 network | `files/etc/sysctl.d/90-hardening.conf` | Docker forwarding exception; no redirects/source routing, rp_filter, syncookies, **no IPv6 router advertisements** |
+| 4.3 firewall | `files/etc/nftables.conf` | default deny on input and forward; inbound host SSH only; Docker chains filter container ports and bridge traffic. Outbound allowed (exception) |
 | 5.1 SSH | `files/etc/ssh/sshd_config.d/10-cis.conf` | `AllowUsers jonathan`, strong ciphers/kex/MACs only, no forwarding, banner, limits |
 | 5.2 sudo / su | `DEBIAN/30-sudo-rs`, `files/etc/sudoers.d/50-cis`, `HARDEN/20-pam` | `sudo` is sudo-rs; members of `sudo` keep their PATH, which includes the sbin directories for every user. pty, timeout, commands logged to the journal (no log file: exception). `su` limited to the empty `sugroup` |
 | 5.3 PAM | `HARDEN/20-pam`, `files/usr/share/pam-configs/*` | faillock, pwquality, pwhistory, no `nullok` (Debian's `unix` profile is dpkg-diverted so upgrades can't put it back) |
@@ -67,6 +67,7 @@ Delete a line to enforce that control again.
 | Control | Decision |
 |---|---|
 | 1.1.1.9 usb-storage disabled | USB storage stays enabled, for maintenance |
+| 3.3.1 IP forwarding disabled | Docker bridge networking needs forwarding. The host retains its default-drop forward policy and Docker filters bridge traffic and published ports |
 | 4.3.8 default deny on **output** | outbound traffic is allowed. Input and forward remain default-deny and are still enforced |
 | 5.2.3 sudo log file | sudo-rs has no `logfile=` option. It logs every command to the journal instead |
 
@@ -500,12 +501,48 @@ The committed NodeSource signing key comes from
 
 ## How FAI composes a machine: classes
 
+Every cloud and metal machine uses Debian's standard `pam_motd` integration
+in both `/etc/pam.d/sshd` and `/etc/pam.d/login`. The executable
+`/etc/update-motd.d/05-frithuz` displays the Frithuz logo, environment badge,
+runtime hostname, system usage, Docker status, recent logins, owner and rules.
+It runs no update checks or package-manager commands. `/etc/motd` is empty,
+`10-uname` is non-executable, and the package-owned `92-unattended-upgrades`
+hook is left intact. PAM regenerates `/run/motd.dynamic` on login.
+
+Set `MOTD_ENV` in `config/class/SERVER.var` to `local`, `dev`, `test`,
+`staging`, or `production` (the default). Both `make check` and installation
+reject any other value. Installation writes `ENV=<value>` to
+`/etc/environment`, preserving other settings. The script reads that file
+when `ENV` is absent from PAM's environment. Invalid or unset runtime values
+display `UNKNOWN ENV`.
+
+Docker Engine (`docker-ce`, `docker-ce-cli`, `containerd.io`) is installed
+from [Docker's official Debian repository](https://docs.docker.com/engine/install/debian/),
+using `files/etc/apt/sources.list.d/docker.sources/SERVER` and the committed
+`files/etc/apt/keyrings/docker.asc/SERVER` signing key (fingerprint
+`9DC8 5822 9FC7 DD38 854A E2D8 8D81 803C 0EBF CD88`). Docker and containerd
+are enabled. The CIS forwarding exception permits Docker bridge networking;
+the host firewall allows Docker bridge traffic to pass through Docker's own
+filtering chains while retaining default-drop forwarding for other traffic.
+Docker starts after nftables and restarts with it. After manually reloading
+the nftables rules, restart Docker to restore its generated tables. Published
+container ports are governed by Docker's rules; the host input policy allows
+only SSH. MOTD status collection times out if Docker is unresponsive, and
+missing Docker or login history produces a short fallback message.
+
 The console login screen shows the current hostname, IPv4 and IPv6 addresses,
 and SSH username before login. `agetty` expands
 `files/etc/issue.d/50-network.issue/SERVER` and refreshes the displayed addresses
 when they change, including when DHCP completes after the login prompt appears.
-This applies to console logins only; the SSH banner and post-login MOTD are
-unchanged.
+This applies to console logins only. Every cloud and metal machine also gets
+the castle and Frithuz legal notice in `/etc/issue.net`, displayed before SSH
+authentication. `frithuz-issue.service` regenerates it on every boot after
+cloud-init sets the hostname and before SSH starts. The hostname appears in
+uppercase, centered across two castle lines with spaces between characters;
+names longer than 34 characters use compact lettering so the full name fits.
+After changing a running machine's hostname, run
+`sudo /usr/local/sbin/update-frithuz-issue` to refresh its banner immediately.
+The template lives in `files/usr/local/share/frithuz/issue.net/SERVER`.
 
 Metal installs use `frithuz-<mac>` as their hostname, for example
 `frithuz-001c42f09e11`. The suffix is the active Ethernet NIC's MAC address,

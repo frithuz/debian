@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+case ${1:-} in
+    local|dev|test|staging|production) ;;
+    *) echo 'ERROR: MOTD_ENV must be local, dev, test, staging or production' >&2; exit 1 ;;
+esac

@@ -12,9 +12,12 @@ esac
 $ROOTCMD apt-get -y --no-install-recommends install ca-certificates
 fcopy -M /etc/apt/keyrings/nodesource.asc
 fcopy -M /etc/apt/sources.list.d/nodesource.sources
+fcopy -M /etc/apt/keyrings/docker.asc
+fcopy -M /etc/apt/sources.list.d/docker.sources
 fcopy -M /etc/apt/preferences.d/nodesource
 fcopy -M /etc/dpkg/dpkg.cfg.d/omit-npm
 chmod 0644 "$target/etc/apt/keyrings/nodesource.asc"
+chmod 0644 "$target/etc/apt/keyrings/docker.asc"
 
 # APT normally tolerates unreachable repositories. Fail rather than install
 # Debian's older nodejs when NodeSource cannot be reached.

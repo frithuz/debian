@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Install the hostname-specific SSH banner for every cloud and metal machine.
+set -euo pipefail
+fcopy -m root,root,0755 /usr/local/sbin/update-frithuz-issue
+fcopy -m root,root,0644 /usr/local/share/frithuz/issue.net
+fcopy -M /etc/systemd/system/frithuz-issue.service
+fcopy -m root,root,0600 /etc/ssh/sshd_config.d/20-frithuz-banner.conf
+"$target/usr/local/sbin/update-frithuz-issue" "$target"
+$ROOTCMD systemctl enable frithuz-issue.service

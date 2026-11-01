@@ -2,5 +2,6 @@
 # Format: <control-id> <reason>. cis-check still runs these controls and reports them
 # as EXCEPT (with the reason) instead of FAIL. Remove a line to enforce the control again.
 1.1.1.9 usb-storage stays enabled: USB media are needed for maintenance (decided 2026-10-31)
+3.3.1 Docker bridge networking needs IP forwarding; Docker filters container traffic and the host forward policy remains drop
 4.3.8/out outbound traffic allowed (output policy accept); input and forward stay default-deny (decided 2026-10-31)
 5.2.3 sudo-rs has no logfile= option; it logs every sudo command to the journal instead (decided 2026-10-31)

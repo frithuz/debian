@@ -49,7 +49,7 @@ FAI_HOST    := cloud-$(ARCH)
 # Rebuild artifacts whenever anything in the config space changes.
 CONFIG_FILES := $(shell find $(CONFIG) -type f)
 
-.PHONY: help deps check packages userdata-ready cloud metal-iso nfsroot \
+.PHONY: help deps check packages userdata-ready motd-ready cloud metal-iso nfsroot \
         test-cloud test-metal boot-metal ssh clean
 
 help:
@@ -73,13 +73,15 @@ deps:
 	getent group adm >/dev/null || $(SUDO) groupadd --system adm
 	[ -e /etc/localtime ] || { $(SUDO) ln -sf /usr/share/zoneinfo/Etc/UTC /etc/localtime && test -e /etc/localtime; }
 
-check:
+check: motd-ready
 	@cd $(CONFIG) && bash -n class/[0-9]* scripts/*/* hooks/*.* bin/* files/usr/local/sbin/cis-check/HARDEN && echo "bash syntax: ok"
 	@bash -n test/*.sh && echo "test scripts syntax: ok"
 	@bash test/check-install-disk.sh
 	@bash test/check-metal-storage.sh
 	@bash test/check-metal-hostname.sh
 	@bash test/check-branding.sh
+	@bash test/check-issue-net.sh
+	@bash test/check-motd.sh
 	@bash test/check-installer-boot.sh
 	@if command -v lvmconfig >/dev/null; then bash test/check-lvm-autoactivation.sh; \
 	 else echo "installer LVM policy: skipped (install lvm2 to check)"; fi
@@ -87,6 +89,8 @@ check:
 	@if command -v shellcheck >/dev/null; then \
 	    shellcheck -S warning -e SC2154,SC2086,SC2034,SC2016 \
 	        config/files/usr/local/sbin/update-frithuz-branding/SERVER \
+	        config/files/usr/local/sbin/update-frithuz-issue/SERVER \
+	        config/files/etc/update-motd.d/05-frithuz/SERVER \
 	        config/files/etc/default/grub.d/20-frithuz.cfg/SERVER \
 	        config/files/usr/local/libexec/install-user-agents/SERVER \
 	        config/files/usr/local/share/user-agent-path.sh/SERVER \
@@ -119,13 +123,16 @@ userdata-ready:
 	@grep -qE '^\s*(ssh_import_id|ssh_authorized_keys)\s*:' $(USERDATA) || { \
 	    echo "ERROR: config/cloud-init/user-data has no ssh_import_id or ssh_authorized_keys; you would be locked out."; exit 1; }
 
+motd-ready:
+	@bash -c '. "$(CONFIG)/class/SERVER.var"; "$(CONFIG)/bin/check-motd-env" "$$MOTD_ENV"'
+
 $(BUILD):
 	mkdir -p $@
 
 # ---- cloud ------------------------------------------------------------------
 
 cloud: $(CLOUD_IMAGE)
-$(CLOUD_IMAGE): $(CONFIG_FILES) | $(BUILD)
+$(CLOUD_IMAGE): $(CONFIG_FILES) | $(BUILD) motd-ready
 	$(native_only)
 	$(SUDO) rm -f $@
 	$(SUDO) fai-diskimage -v -u $(FAI_HOST) -S $(CLOUD_SIZE) \
@@ -179,7 +186,7 @@ nfsroot: $(FAI_ETC)/boot-ready
 # (same sources as the cloud build, including the APT_SNAPSHOT pin).
 # The nfsroot (and so the ISO) is always the build host's architecture.
 metal-iso: $(METAL_ISO)
-$(METAL_ISO): Makefile $(CONFIG_FILES) | userdata-ready $(BUILD)
+$(METAL_ISO): Makefile $(CONFIG_FILES) | userdata-ready motd-ready $(BUILD)
 	$(native_only)
 	$(MAKE) nfsroot
 	$(SUDO) fai-cd -f -M -C $(FAI_ETC) -c $(CONFIG) $@

@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+# Render the SSH banner using the target identity during installation and the
+# running hostname at boot, after cloud-init has applied provider metadata.
+set -euo pipefail
+export LC_ALL=C
+root=${1:-}
+if [[ -n $root ]]; then
+    read -r machine_name < "$root/etc/hostname"
+else
+    machine_name=$(hostname)
+fi
+[[ $machine_name =~ ^[a-zA-Z0-9][a-zA-Z0-9.-]{0,63}$ ]] || {
+    echo "ERROR: invalid hostname for SSH banner: $machine_name" >&2; exit 1;
+}
+
+tmp=$(mktemp "$root/etc/issue.net.frithuz.XXXXXX")
+trap 'rm -f "$tmp"' EXIT
+awk -v name="$machine_name" '
+    function center(text,    padding) {
+        padding = int((33 - length(text)) / 2)
+        return sprintf("%*s%s%*s", padding, "", text,
+                       33 - length(text) - padding, "")
+    }
+    function spaced(text,    result, i) {
+        result = ""
+        for (i = 1; i <= length(text); i++)
+            result = result (i == 1 ? "" : " ") substr(text, i, 1)
+        return result
+    }
+    BEGIN {
+        name = toupper(name)
+        # Two 33-column fields fit up to 34 spaced characters, or a full
+        # 64-character Linux hostname without inter-letter spaces.
+        width = length(name) <= 34 ? 17 : 33
+        split_at = length(name)
+        if (split_at > width) {
+            split_at = int((length(name) + 1) / 2)
+        }
+        # Prefer breaking after a hyphen when both lines will fit, including
+        # short names such as JUST-MY-CASTLE from the original artwork.
+        for (i = 1; i < length(name); i++)
+            if (i <= width && length(name) - i <= width &&
+                substr(name, i, 1) == "-") split_at = i
+        first = substr(name, 1, split_at)
+        second = substr(name, split_at + 1)
+        if (width == 17) {
+            first = spaced(first)
+            second = spaced(second)
+        }
+    }
+    { sub(/@HOSTNAME_LINE_1@/, center(first))
+      sub(/@HOSTNAME_LINE_2@/, center(second))
+      print }
+' "$root/usr/local/share/frithuz/issue.net" > "$tmp"
+chmod 0644 "$tmp"
+mv -f "$tmp" "$root/etc/issue.net"

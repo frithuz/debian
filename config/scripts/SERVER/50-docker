@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+set -euo pipefail
+if ifclass HARDEN; then
+    fcopy -M /etc/systemd/system/docker.service.d/10-nftables.conf
+fi
+$ROOTCMD systemctl enable docker.service containerd.service

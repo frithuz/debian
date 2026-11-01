@@ -6,8 +6,8 @@ kernel.yama.ptrace_scope = 1
 # 1.5.3
 fs.suid_dumpable = 0
 
-# 3.3.1
-net.ipv4.ip_forward = 0
+# 3.3.1: Docker needs IPv4 forwarding (explicit exception in cis-check).
+net.ipv4.ip_forward = 1
 net.ipv6.conf.all.forwarding = 0
 # 3.3.2
 net.ipv4.conf.all.send_redirects = 0

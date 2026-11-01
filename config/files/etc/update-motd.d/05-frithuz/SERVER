@@ -1,0 +1,96 @@
+#!/bin/bash
+# Frithuz login status. pam_motd runs this as root on every login.
+export LC_ALL=C
+ENV="${ENV:-$(sed -n 's/^ENV=//p' /etc/environment 2>/dev/null | tr -d '"')}"
+OWNER="Jonathan Garbee <garbee@frithuz.com>"
+NOTE="Just be chill."
+RESET=$'\e[0m' CYAN=$'\e[36m' MAGENTA=$'\e[35m'
+GREEN=$'\e[32m' YELLOW=$'\e[33m' RED=$'\e[31m'
+BOLD=$'\e[1m' DIM=$'\e[2m'
+case $ENV in
+    local)      ENV_COLOR=$'\e[1;37;44m'; ENV_LABEL=' LOCAL ' ;;
+    dev)        ENV_COLOR=$'\e[1;30;42m'; ENV_LABEL=' DEV ' ;;
+    test)       ENV_COLOR=$'\e[1;30;46m'; ENV_LABEL=' TEST ' ;;
+    staging)    ENV_COLOR=$'\e[1;30;43m'; ENV_LABEL=' STAGING ' ;;
+    production) ENV_COLOR=$'\e[1;37;41m'; ENV_LABEL=' PRODUCTION ' ;;
+    *)          ENV_COLOR=$'\e[1;37;45m'; ENV_LABEL=' UNKNOWN ENV ' ;;
+esac
+kv() { printf '  %s%-12s%s %s\n' "$DIM" "$1" "$RESET" "$2"; }
+percent() {
+    local color=$GREEN
+    if (( $1 >= 90 )); then color=$RED
+    elif (( $1 >= 70 )); then color=$YELLOW; fi
+    printf '%s%d%%%s' "$color" "$1" "$RESET"
+}
+
+printf '\n%s%s' "$BOLD" "$CYAN"
+cat <<'LOGO'
+   _____        _  _    _
+  |  ___| _ __ (_)| |_ | |__   _   _  ____
+  | |_   | '__|| || __|| '_ \ | | | ||_  /
+  |  _|  | |   | || |_ | | | || |_| | / /
+  |_|    |_|   |_| \__||_| |_| \__,_|/___|
+LOGO
+printf '%s\n  %s%s%s  %s%s%s %s·%s Docker, AI agents & the Frithuz web host\n' \
+    "$RESET" "$ENV_COLOR" "$ENV_LABEL" "$RESET" "$BOLD" "$(hostname)" "$RESET" "$DIM" "$RESET"
+
+printf '\n  %s%sSystem%s\n' "$BOLD" "$MAGENTA" "$RESET"
+# shellcheck source=/dev/null
+. /etc/os-release
+kv OS "${PRETTY_NAME:-unknown} ${DIM}·${RESET} kernel $(uname -r)"
+kv Uptime "$(uptime -p 2>/dev/null | sed 's/^up //')"
+read -r load1 load5 load15 _ < /proc/loadavg
+kv Load "$load1, $load5, $load15  ${DIM}($(nproc) cores)${RESET}"
+memory_pct=$(awk '/^MemTotal:/ {total=$2} /^MemAvailable:/ {available=$2}
+    END {if (total > 0) print int(100*(total-available)/total); else print 0}' /proc/meminfo)
+read -r memory_used memory_total <<< "$(free -h | awk '/^Mem:/ {print $3, $2}')"
+kv Memory "$(percent "$memory_pct")  ${DIM}$memory_used / $memory_total${RESET}"
+read -r disk_used disk_total disk_pct <<< "$(df -hP / | awk 'NR == 2 {print $3, $2, $5}')"
+kv 'Disk /' "$(percent "${disk_pct%%%}")  ${DIM}$disk_used / $disk_total${RESET}"
+address=$(ip -o -4 addr show scope global 2>/dev/null | awk '
+    $2 !~ /^(docker|br-|veth)/ {split($4, address, "/"); print address[1]; exit}')
+kv IP "${address:-unknown}"
+
+printf '\n  %s%sDocker%s' "$BOLD" "$MAGENTA" "$RESET"
+if command -v docker >/dev/null && docker_info=$(timeout 3s docker info --format '{{.ContainersRunning}} {{.ContainersStopped}} {{.Images}}' 2>/dev/null); then
+    read -r running stopped images <<< "$docker_info"
+    printf '  %s%s running%s' "$GREEN" "$running" "$RESET"
+    if (( stopped > 0 )); then printf '  %s·%s  %s%s stopped%s' "$DIM" "$RESET" "$YELLOW" "$stopped" "$RESET"; fi
+    image_label=images
+    [[ $images == 1 ]] && image_label=image
+    printf '  %s·  %s %s%s\n' "$DIM" "$images" "$image_label" "$RESET"
+    containers=$(timeout 3s docker ps --format '{{.Names}}' 2>/dev/null | head -n 8)
+    if [[ -n $containers ]]; then
+        # Take one snapshot for the displayed containers, rather than a
+        # separate stats request (and sampling delay) for every row.
+        mapfile -t names <<< "$containers"
+        stats=$(timeout 5s docker stats --no-stream --format '{{.Name}}|{{.CPUPerc}}|{{.MemUsage}}' "${names[@]}" 2>/dev/null)
+        while IFS= read -r name; do
+            cpu='n/a' memory='n/a'
+            while IFS='|' read -r stats_name stats_cpu stats_memory; do
+                if [[ $stats_name == "$name" ]]; then cpu=$stats_cpu; memory=$stats_memory; break; fi
+            done <<< "$stats"
+            printf '    %s●%s %-24s  %scpu%s %s  %smem%s %s\n' \
+                "$GREEN" "$RESET" "$name" "$DIM" "$RESET" "$cpu" "$DIM" "$RESET" "$memory"
+        done <<< "$containers"
+        if (( running > 8 )); then printf '    %s… and %d more%s\n' "$DIM" "$((running - 8))" "$RESET"; fi
+    fi
+else
+    printf '  %snot running%s\n' "$DIM" "$RESET"
+fi
+
+printf '\n  %s%sRecent logins%s\n' "$BOLD" "$MAGENTA" "$RESET"
+history=''
+if command -v wtmpdb >/dev/null && history=$(wtmpdb last -n 3 2>/dev/null); then
+    :
+elif command -v last >/dev/null; then
+    history=$(last -n 3 -a 2>/dev/null) || history=''
+fi
+history=$(awk 'NF && $1 !~ /^(reboot|shutdown|wtmp|wtmpdb)$/ {print; count++; if (count == 3) exit}' <<< "$history")
+if [[ -n $history ]]; then
+    printf '    %s%-8s %-12s %-16s %s%s\n' "$BOLD" USER TTY FROM 'LOGIN - LOGOUT (DURATION)' "$RESET"
+    while IFS= read -r entry; do printf '    %s%s%s\n' "$DIM" "$entry" "$RESET"; done <<< "$history"
+else
+    printf '    %sno login history (install wtmpdb + libpam-wtmpdb)%s\n' "$DIM" "$RESET"
+fi
+printf '\n  %sOwner%s  %s\n  %sRules%s  %s\n\n' "$DIM" "$RESET" "$OWNER" "$DIM" "$RESET" "$NOTE"
