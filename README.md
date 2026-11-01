@@ -308,6 +308,10 @@ disk, but unused volume-group space stays free for later expansion with `lvexten
 The live installer disables LVM autoactivation so signatures exposed while
 repartitioning cannot activate old volumes and block `pvcreate`. The installed
 system retains normal LVM activation.
+Existing volume groups on unselected disks are excluded from FAI's storage plan.
+The new system uses `vg0`, or the first available `vg1`, `vg2`, etc. if that name
+belongs to another disk. An existing group spanning the target and another disk
+stops installation before storage changes.
 
 **Cloud:** convert to raw (`qemu-img convert -O raw build/cloud-amd64.qcow2 build/cloud-amd64.raw`)
 and import it, e.g. AWS `import-snapshot` -> `register-image`, or `gcloud compute images create`.

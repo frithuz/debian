@@ -4,7 +4,8 @@
 # Interactive installs show a disk selector. Needs >= 48 GiB.
 #
 # The VG is deliberately not filled: grow LVs later with
-#   lvextend -r -L +10G vg0/var
+#   lvextend -r -L +10G <volume-group>/var
+# The partition hook chooses vg0, vg1, ... to avoid names on other disks.
 #
 # p=<partlabel> <mountpoint> <size> <fs type> <mount options> <misc options>
 

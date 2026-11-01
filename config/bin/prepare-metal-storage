@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+# Isolate setup-storage from VGs on disks that were not selected for erasure.
+# Print the target VG followed by foreign VG names for SS_IGNORE_VG.
+set -euo pipefail
+disk=${1:?selected whole disk}
+config=${2:?metal disk config}
+descendants=$(lsblk --noheadings --raw --paths --output NAME "$disk")
+inventory=$(pvs --noheadings --separator '|' -o pv_name,vg_name,vg_uuid)
+declare -A names=() on_target=() elsewhere=() foreign=() target_names=()
+trim() { local value=$1; value="${value#"${value%%[![:space:]]*}"}"; printf '%s' "${value%"${value##*[![:space:]]}"}"; }
+while IFS='|' read -r pv vg uuid; do
+    pv=$(trim "$pv"); vg=$(trim "$vg"); uuid=$(trim "$uuid")
+    [[ -n $vg ]] || continue
+    [[ -n $uuid ]] || { echo "ERROR: cannot identify VG $vg" >&2; exit 1; }
+    canonical=$(readlink -f -- "$pv") || { echo "ERROR: cannot identify PV $pv" >&2; exit 1; }
+    names[$uuid]=$vg
+    if grep -Fxq -- "$canonical" <<< "$descendants"; then
+        on_target[$uuid]=1
+        target_names[$vg]=1
+    else
+        elsewhere[$uuid]=1
+        foreign[$vg]=1
+    fi
+done <<< "$inventory"
+for uuid in "${!names[@]}"; do
+    if [[ -n ${on_target[$uuid]:-} && -n ${elsewhere[$uuid]:-} ]]; then
+        echo "ERROR: VG ${names[$uuid]} spans the selected disk and other disks; refusing to modify it" >&2
+        exit 1
+    fi
+done
+for vg in "${!foreign[@]}"; do
+    if [[ -n ${target_names[$vg]:-} ]]; then
+        echo "ERROR: duplicate VG name $vg on selected and unselected disks; refusing ambiguous cleanup" >&2
+        exit 1
+    fi
+done
+
+# Reuse vg0 when it belongs only to the target, otherwise pick an unused name.
+number=0
+while [[ -n ${foreign[vg$number]:-} ]]; do number=$((number + 1)); done
+chosen=vg$number
+old=$(awk '$1 == "vg" {print $2; exit}' "$config")
+[[ -n $old ]] || { echo 'ERROR: no volume group in metal disk config' >&2; exit 1; }
+tmp=$(mktemp "${config}.XXXXXX")
+trap 'rm -f "$tmp"' EXIT
+awk -v old="$old" -v chosen="$chosen" '
+    $1 == "vg" && $2 == old { $2 = chosen }
+    index($1, old "-") == 1 { $1 = chosen substr($1, length(old) + 1) }
+    { print }
+' "$config" > "$tmp"
+cat "$tmp" > "$config"
+printf '%s' "$chosen"
+if (( ${#foreign[@]} )); then
+    printf ' %s' "${!foreign[@]}"
+fi
+printf '\n'

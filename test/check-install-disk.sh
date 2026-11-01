@@ -22,6 +22,7 @@ while IFS='|' read -r name type removable readonly size transport mounts; do
     [[ -z $device || $device == "$name" ]] || continue
     case $output in
         NAME,TYPE) printf '%s %s\n' "$name" "$type" ;;
+        NAME) printf '%s\n' "$name" ;;
         RM,RO,SIZE,TRAN) printf '%s %s %s %s\n' "$removable" "$readonly" "$size" "$transport" ;;
         SIZE,MODEL,SERIAL) printf '%s Fixture-SSD serial-%s\n' "$size" "${name##*/}" ;;
         MOUNTPOINTS)
@@ -131,7 +132,13 @@ selected /dev/mmcblk0
 
 # The sourced hook must update the environment used by setup-storage, and
 # must prevent partitioning even if FAI's error handler returns to its caller.
-export FAI=$here/../config FAI_ACTION=install LOGDIR=$work
+mkdir -p "$work/fai/bin" "$work/fai/hooks" "$work/fai/disk_config"
+cp "$here/../config/bin/"{select-install-disk,prepare-metal-storage} "$work/fai/bin/"
+cp "$here/../config/hooks/partition.METAL.sh" "$work/fai/hooks/"
+cp "$here/../config/disk_config/METAL_EFI" "$work/fai/disk_config/"
+printf '#!/bin/sh\nexit 0\n' > "$work/bin/pvs"
+chmod +x "$work/bin/pvs"
+export FAI=$work/fai FAI_ACTION=install LOGDIR=$work
 udevadm() { return 0; }
 task_error() { [[ $1 == 999 ]]; }
 export -f udevadm task_error

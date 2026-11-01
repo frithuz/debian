@@ -77,6 +77,7 @@ check:
 	@cd $(CONFIG) && bash -n class/[0-9]* scripts/*/* hooks/*.* bin/* files/usr/local/sbin/cis-check/HARDEN && echo "bash syntax: ok"
 	@bash -n test/*.sh && echo "test scripts syntax: ok"
 	@bash test/check-install-disk.sh
+	@bash test/check-metal-storage.sh
 	@bash test/check-installer-boot.sh
 	@if command -v lvmconfig >/dev/null; then bash test/check-lvm-autoactivation.sh; \
 	 else echo "installer LVM policy: skipped (install lvm2 to check)"; fi
