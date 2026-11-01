@@ -27,6 +27,11 @@ on:
   pull_request:
   workflow_dispatch:
   workflow_call:   # release.yml builds through this workflow
+    secrets:
+      # Environment secrets are empty in a called workflow unless the caller passes them,
+      # even though the jobs set environment: dhi.
+      DHI_TOKEN:
+        required: true
 
 permissions:
   contents: read
