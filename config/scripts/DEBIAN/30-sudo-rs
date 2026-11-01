@@ -3,11 +3,10 @@
 # no sudoers or PAM files, so add those and the usual command names. su stays
 # util-linux's (HARDEN/20-pam restricts it via /etc/pam.d/su).
 #
-# Members of sudo keep their own PATH under sudo (!secure_path), so sudo only finds
-# what is on it. Debian leaves the sbin directories off non-root PATHs, which would
-# make `sudo cis-check` or `sudo nft` "command not found". Put them on everyone's PATH:
-# /etc/environment (read by pam_env, so ssh sessions, including non-interactive ones),
-# /etc/profile (login shells) and login.defs (login, su).
+# sudo uses the trusted secure_path from /etc/sudoers. Also put the sbin
+# directories on everyone's normal PATH for direct use of administrative tools:
+# /etc/environment (read by pam_env, so ssh sessions, including non-interactive
+# ones), /etc/profile (login shells) and login.defs (login, su).
 
 error=0; trap 'error=$(($?>$error?$?:$error))' ERR # save maximum error code
 

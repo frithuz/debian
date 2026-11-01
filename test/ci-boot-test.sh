@@ -258,15 +258,16 @@ sudo_version=$(vm 'sudo --version' 2>&1) || true
 vm 'sudo -n true' || bad "$user has no passwordless sudo"
 
 # sbin is on $user's PATH (DEBIAN/30-sudo-rs), in plain ssh sessions and login shells.
-# sudo searches the caller's PATH, so without it `sudo cis-check` is "command not found".
+# sudo uses its own secure_path, checked separately below.
 for sh in 'echo "$PATH"' 'bash -lc '\''echo "$PATH"'\'''; do
     p=$(vm "$sh" 2>&1) || true
     [[ :$p: == *:/usr/sbin:* && :$p: == *:/usr/local/sbin:* ]] || bad "no sbin on $user's PATH ($sh): '$p'"
 done
-# The caller's PATH survives sudo (Defaults:%sudo !secure_path in /etc/sudoers).
+# sudo replaces the caller's PATH with the trusted system directories.
 mapfile -t paths < <(vm 'export PATH=/opt/ci-path-test:$PATH; echo "$PATH"; sudo -n sh -c '\''echo "$PATH"'\''' 2>&1)
-[[ ${paths[0]} == /opt/ci-path-test:* && ${paths[1]-} == "${paths[0]}" ]] \
-    || bad "sudo did not keep $user's PATH: '${paths[0]-}' became '${paths[1]-}'"
+secure_path=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+[[ ${paths[0]-} == /opt/ci-path-test:* && ${paths[1]-} == "$secure_path" ]] \
+    || bad "sudo did not enforce secure_path: '${paths[0]-}' became '${paths[1]-}'"
 vm 'cat /var/lib/fai-build/packages.tsv' > "$out/packages.tsv" || bad "no /var/lib/fai-build/packages.tsv"
 # what is really installed now, after first boot (compared with the build manifest in CI)
 vm "dpkg-query -W -f='\${db:Status-Status}\t\${binary:Package}\t\${Version}\n' | awk -F'\t' '\$1==\"installed\" {print \$2 \"\t\" \$3}' | sort" \

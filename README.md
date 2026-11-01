@@ -52,7 +52,7 @@ What it covers, by benchmark section:
 | 3.3 network | `files/etc/sysctl.d/90-hardening.conf` | Docker forwarding exception; no redirects/source routing, rp_filter, syncookies, **no IPv6 router advertisements** |
 | 4.3 firewall | `files/etc/nftables.conf` | default deny on input and forward; inbound host SSH only; Docker chains filter container ports and bridge traffic. Outbound allowed (exception) |
 | 5.1 SSH | `files/etc/ssh/sshd_config.d/10-cis.conf` | `AllowUsers jonathan`, strong ciphers/kex/MACs only, no forwarding, banner, limits |
-| 5.2 sudo / su | `DEBIAN/30-sudo-rs`, `files/etc/sudoers.d/50-cis`, `HARDEN/20-pam` | `sudo` is sudo-rs; members of `sudo` keep their PATH, which includes the sbin directories for every user. pty, timeout, commands logged to the journal (no log file: exception). `su` limited to the empty `sugroup` |
+| 5.2 sudo / su | `DEBIAN/30-sudo-rs`, `files/etc/sudoers.d/50-cis`, `HARDEN/20-pam` | `sudo` is sudo-rs and uses a fixed `secure_path` for all users. Normal user PATHs also include the sbin directories. pty, timeout, commands logged to the journal (no log file: exception). `su` limited to the empty `sugroup` |
 | 5.3 PAM | `HARDEN/20-pam`, `files/usr/share/pam-configs/*` | faillock, pwquality, pwhistory, no `nullok` (Debian's `unix` profile is dpkg-diverted so upgrades can't put it back) |
 | 5.4 accounts | `HARDEN/30-accounts`, `files/etc/profile.d/50-cis.sh` | password ageing defaults, yescrypt, inactive lock, umask 027, 15-min shell timeout |
 | 6.1 logging | `files/etc/systemd/journald.conf.d/{50-cis,syslog}.conf`, `files/etc/tmpfiles.d/cis-logs.conf` | journald only, persistent, compressed. Log files not world-readable (also re-applied at boot) |
