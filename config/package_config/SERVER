@@ -11,6 +11,7 @@ jq
 tmux
 lsof
 bind9-dnsutils
+nvme-cli                   # NVMe disks on metal and many clouds (e.g. AWS EBS/instance store)
 cloud-init                 # configures every machine on first boot, cloud or metal
 systemd-resolved           # DNS from DHCP (systemd-networkd doesn't write resolv.conf)
 ifupdown-                  # networking is systemd-networkd, configured by cloud-init (SERVER/30-network)

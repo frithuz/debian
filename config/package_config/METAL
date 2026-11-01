@@ -2,7 +2,6 @@ PACKAGES install-norec
 lvm2
 mdadm
 smartmontools
-nvme-cli
 ethtool
 lm-sensors
 ipmitool
