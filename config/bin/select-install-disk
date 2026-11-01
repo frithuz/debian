@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+# Print one safe whole-disk target. Read-only: never modifies storage.
+set -euo pipefail
+
+requested=${1:-}
+candidates=()
+inventory=$(lsblk --nodeps --noheadings --paths --output NAME,TYPE)
+while read -r disk type; do
+    [[ $type == disk ]] || continue
+    if ! facts=$(lsblk --nodeps --noheadings --bytes --output RM,RO,SIZE,TRAN "$disk"); then
+        echo "Excluding $disk: cannot read disk properties" >&2
+        continue
+    fi
+    read -r removable readonly size transport <<< "$facts"
+    if [[ $removable != 0 || $readonly != 0 || $transport == usb ]]; then
+        echo "Excluding $disk: removable, read-only, or USB device" >&2
+        continue
+    fi
+    # The layout needs 46 GiB for LVM plus /boot and the EFI partition.
+    if [[ ! $size =~ ^[0-9]+$ ]] || (( size < 48 * 1024 * 1024 * 1024 )); then
+        echo "Excluding $disk: smaller than 48 GiB or size unknown" >&2
+        continue
+    fi
+    # Includes mounted partitions and device-mapper descendants (e.g. Ventoy),
+    # and active swap. Protect installer media even if RM/TRAN are misleading.
+    if ! mounts=$(lsblk --noheadings --raw --output MOUNTPOINTS "$disk"); then
+        echo "Excluding $disk: cannot check mounted descendants" >&2
+        continue
+    fi
+    if [[ -n ${mounts//[[:space:]]/} ]]; then
+        echo "Excluding $disk: disk or a descendant is in use" >&2
+        continue
+    fi
+    candidates+=("$disk")
+done <<< "$inventory"
+
+if [[ -n $requested ]]; then
+    resolved=$(readlink -f -- "$requested") || exit 1
+    for disk in "${candidates[@]}"; do
+        if [[ $disk == "$resolved" ]]; then
+            printf '%s\n' "$disk"
+            exit 0
+        fi
+    done
+    echo "ERROR: FAI_INSTALL_DISK=$requested is not an eligible internal disk" >&2
+    exit 1
+fi
+
+if (( ${#candidates[@]} != 1 )); then
+    echo "ERROR: expected one eligible internal disk, found ${#candidates[@]}" >&2
+    printf 'Eligible disks: %s\n' "${candidates[*]:-none}" >&2
+    echo "Select an eligible disk with FAI_INSTALL_DISK=/dev/disk/by-id/... on the installer kernel command line." >&2
+    exit 1
+fi
+printf '%s\n' "${candidates[0]}"

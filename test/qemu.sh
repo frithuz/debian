@@ -2,7 +2,7 @@
 # Boot the build artifacts in QEMU (UEFI). No root needed.
 #
 #   qemu.sh cloud         BUILD   boot cloud-$ARCH.qcow2 (throwaway overlay) + NoCloud seed
-#   qemu.sh metal-install BUILD   boot metal-$ARCH.iso with a blank 32G "server disk"
+#   qemu.sh metal-install BUILD   boot metal-$ARCH.iso with a blank 64G "server disk"
 #   qemu.sh metal-boot    BUILD   boot that disk after installing
 #
 # metal-install with HEADLESS=1 installs unattended: it boots the ISO's own kernel and
@@ -111,7 +111,7 @@ metal-install)
     iso=$build/metal-$arch.iso
     need "$iso" metal-iso
     rm -f "$work/metal-$arch-disk.qcow2" "$work/metal-$arch-vars.fd"
-    qemu-img create -q -f qcow2 "$work/metal-$arch-disk.qcow2" 32G
+    qemu-img create -q -f qcow2 "$work/metal-$arch-disk.qcow2" 64G
     if [[ $headless == 1 ]]; then
         # The kernel arguments of the "Client standalone installation" entry in FAI's
         # grub.cfg, without "menu" (no profile dialog), "createvt" and "quiet", plus

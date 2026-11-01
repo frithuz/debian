@@ -5,7 +5,7 @@
 #   ARCH=amd64 test/ci-boot-test.sh build          # build/cloud-$ARCH.qcow2
 #   ARCH=amd64 test/ci-boot-test.sh build metal    # build/metal-$ARCH.iso
 #
-# metal first installs from the ISO onto a blank NVMe disk, unattended (see
+# metal first installs from the ISO onto a blank 64G NVMe disk, unattended (see
 # `qemu.sh metal-install`), then boots that disk. Results go to $OUT (default
 # build/boot-test-$ARCH, or build/boot-test-metal-$ARCH).
 #

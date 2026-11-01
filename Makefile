@@ -60,7 +60,7 @@ help:
 	@echo "make cloud       build $(CLOUD_IMAGE) (+ manifest)"
 	@echo "make metal-iso   build $(METAL_ISO)"
 	@echo "make test-cloud  boot the cloud image in QEMU, configured by config/cloud-init/user-data"
-	@echo "make test-metal  boot the metal ISO in QEMU against a blank 32G disk"
+	@echo "make test-metal  boot the metal ISO in QEMU against a blank 64G disk"
 	@echo "make boot-metal  boot that disk after the install finished"
 	@echo "make ssh         ssh into whichever test VM is running"
 
@@ -76,12 +76,14 @@ deps:
 check:
 	@cd $(CONFIG) && bash -n class/[0-9]* scripts/*/* hooks/*.* bin/* files/usr/local/sbin/cis-check/HARDEN && echo "bash syntax: ok"
 	@bash -n test/*.sh && echo "test scripts syntax: ok"
-	@cd $(CONFIG) && for f in scripts/*/* bin/*; do [ -x "$$f" ] || { echo "not executable: $$f"; exit 1; }; done && echo "scripts executable: ok"
+	@bash test/check-install-disk.sh
+	@cd $(CONFIG) && for f in scripts/*/* hooks/*.* bin/*; do [ -x "$$f" ] || { echo "not executable: $$f"; exit 1; }; done && echo "scripts executable: ok"
 	@if command -v shellcheck >/dev/null; then \
 	    shellcheck -S warning -e SC2154,SC2086,SC2034,SC2016 \
 	        config/bin/* config/files/usr/local/sbin/cis-check/HARDEN config/scripts/SERVER/* config/scripts/HARDEN/* \
 	        config/scripts/METAL/* config/scripts/CLOUD/20-* config/scripts/LAST/9* \
-	        config/hooks/updatebase.DEBIAN config/scripts/GRUB_EFI/05-initramfs test/*.sh \
+	        config/hooks/updatebase.DEBIAN config/hooks/partition.METAL.sh \
+	        config/scripts/GRUB_EFI/05-initramfs test/*.sh \
 	    && echo "shellcheck (our scripts): ok"; fi
 	@head -1 $(USERDATA) | grep -qx '#cloud-config' || { echo "user-data must start with #cloud-config"; exit 1; }
 	@! grep -nE '^\s*(packages|package_update|package_upgrade|apt)\s*:' $(USERDATA) || { \

@@ -228,7 +228,7 @@ your local key isn't one of the keys on GitHub.
 
 ```sh
 sudo make metal-iso          # first run ~15 min (builds the nfsroot once) -> build/metal-<arch>.iso
-make test-metal              # opens a QEMU window: the ISO plus a blank 32G NVMe disk
+make test-metal              # opens a QEMU window: the ISO plus a blank 64G NVMe disk
 ```
 
 The metal ISO and installed system use the kernel and `firmware-realtek` from
@@ -293,8 +293,16 @@ sudo dd if=build/metal-amd64.iso of=/dev/sdX bs=4M status=progress conv=fsync
 ```
 
 Boot the server from it in **UEFI** mode, with network access. **The installer wipes
-the first disk it finds** (FAI's `disk1`). On a machine with several disks, make sure
-that's the one you mean.
+the selected internal disk.** USB, removable, read-only, in-use disks (including
+mounted partitions and active swap), and disks smaller than 48 GiB are excluded.
+It stops before partitioning unless exactly one eligible disk remains. With multiple
+eligible disks, select one by adding `FAI_INSTALL_DISK=/dev/disk/by-id/...` to the
+installer kernel command line; the same exclusions still apply. Use `lsblk` in the
+installer shell to check that the internal drive is detected and identify its path.
+
+The metal layout allocates 35 GiB to `/` and 10 GiB across the separate `/var`,
+log, audit, home, and tmp logical volumes. The LVM partition spans the remaining
+disk, but unused volume-group space stays free for later expansion with `lvextend`.
 
 **Cloud:** convert to raw (`qemu-img convert -O raw build/cloud-amd64.qcow2 build/cloud-amd64.raw`)
 and import it, e.g. AWS `import-snapshot` -> `register-image`, or `gcloud compute images create`.
@@ -334,7 +342,7 @@ the ISO (metal seeds come from it) and the tests, but not the cloud image.
   Progress is logged as it goes: elapsed-time prefixes, a status line about once a
   minute while waiting, and the VM's serial console with a `[vm]` prefix. The run's
   summary page gets a table of how long each phase took.
-- **The metal test** first installs from the ISO onto a blank 32G NVMe disk. It boots
+- **The metal test** first installs from the ISO onto a blank 64G NVMe disk. It boots
   the ISO's own kernel and initrd straight from QEMU, using the arguments of the
   "Client standalone installation" boot entry without the profile menu and with
   `halt` added (FAI powers off when done). Without the menu, the classes come from
