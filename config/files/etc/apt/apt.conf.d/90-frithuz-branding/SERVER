@@ -1,2 +1,5 @@
 // Refresh the local display metadata after Debian updates its vendor file.
-DPkg::Post-Invoke { "/usr/local/sbin/update-frithuz-branding"; };
+// FAI's repository task copies this before SERVER/05-branding installs the
+// updater and diverts os-release. Defer branding until that setup has run;
+// once installed, updater failures must still fail the APT operation.
+DPkg::Post-Invoke { "if [ -x /usr/local/sbin/update-frithuz-branding ]; then /usr/local/sbin/update-frithuz-branding; fi"; };
