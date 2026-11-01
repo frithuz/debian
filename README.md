@@ -375,6 +375,11 @@ the ISO (metal seeds come from it) and the tests, but not the cloud image.
 - **First-boot networking:** cloud-init waits for udev coldplug to finish before
   discovering NICs and writing DHCP configuration. CI also prints network settings
   and the networkd journal to the serial console, so failed SSH boots have diagnostics.
+- **Installer boot output:** the normal ISO entries show only critical kernel
+  messages; the full kernel log remains available with `dmesg`. Choose
+  **Client installation - verbose boot diagnostics** for full kernel and Dracut
+  output. The installer initramfs also fixes Dracut 106's early URL-handler call
+  and makes loopback address setup safe to repeat.
 - **Artifacts:** reports and FAI logs on every run, images on non-PR runs. All are kept for 1 day.
   Any signed-in GitHub user can download artifacts of a public repository; see below.
 - **Action pins:** third-party actions are pinned to commit SHAs. To update, resolve the

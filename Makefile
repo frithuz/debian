@@ -77,6 +77,7 @@ check:
 	@cd $(CONFIG) && bash -n class/[0-9]* scripts/*/* hooks/*.* bin/* files/usr/local/sbin/cis-check/HARDEN && echo "bash syntax: ok"
 	@bash -n test/*.sh && echo "test scripts syntax: ok"
 	@bash test/check-install-disk.sh
+	@bash test/check-installer-boot.sh
 	@if command -v lvmconfig >/dev/null; then bash test/check-lvm-autoactivation.sh; \
 	 else echo "installer LVM policy: skipped (install lvm2 to check)"; fi
 	@cd $(CONFIG) && for f in scripts/*/* hooks/*.* bin/*; do [ -x "$$f" ] || { echo "not executable: $$f"; exit 1; }; done && echo "scripts executable: ok"
@@ -149,13 +150,22 @@ $(FAI_ETC)/NFSROOT: Makefile $(wildcard /etc/fai/NFSROOT /etc/fai/*.conf /etc/fa
 	# Use backports for the installer kernel and RTL8127 firmware.
 	$(SUDO) sed -i -E 's#^(linux-image-(amd64|arm64))$$#\1/trixie-backports#; s#firmware-realtek([[:space:]]|$$)#firmware-realtek/trixie-backports\1#g' $@
 	echo 'deb http://deb.debian.org/debian trixie-backports main non-free-firmware' | $(SUDO) tee -a $(FAI_ETC)/apt/sources.list >/dev/null
-	# Network installs need DHCP even though the live root is on local media.
-	$(SUDO) sed -i '/^[[:space:]]*linux[[:space:]]/s/$$/ ip=dhcp rd.neednet=1/' $(FAI_ETC)/grub.cfg
 
 /srv/fai/nfsroot/.THIS_IS_THE_FAI_NFSROOT: $(FAI_ETC)/NFSROOT
 	$(SUDO) fai-make-nfsroot -v -f -C $(FAI_ETC)
 
-nfsroot: /srv/fai/nfsroot/.THIS_IS_THE_FAI_NFSROOT
+# Patch the installed Dracut scripts and rebuild the initramfs that fai-cd copies.
+# A separate stamp records success only after all boot preparation has completed.
+$(FAI_ETC)/boot-ready: /srv/fai/nfsroot/.THIS_IS_THE_FAI_NFSROOT $(CONFIG)/bin/prepare-installer-boot
+	$(SUDO) $(CONFIG)/bin/prepare-installer-boot /srv/fai/nfsroot $(FAI_ETC)/grub.cfg
+	@set -e; for kernel in /srv/fai/nfsroot/boot/vmlinuz-*; do \
+	    test -f "$$kernel"; version=$${kernel##*/vmlinuz-}; \
+	    $(SUDO) chroot /srv/fai/nfsroot dracut --force "/boot/initrd.img-$$version" "$$version"; \
+	 done
+	$(SUDO) chmod a+r /srv/fai/nfsroot/boot/initrd.img-*
+	$(SUDO) touch $@
+
+nfsroot: $(FAI_ETC)/boot-ready
 
 # -M: no package mirror on the ISO; packages come from the network during install
 # (same sources as the cloud build, including the APT_SNAPSHOT pin).

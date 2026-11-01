@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# Fix Dracut 106's live-boot noise before regenerating the installer initramfs.
+set -euo pipefail
+root=${1:?installer nfsroot}
+grub=${2:?installer grub.cfg}
+shopt -s nullglob
+for file in "$root"/usr/lib/dracut/modules.d/*livenet/parse-livenet.sh; do
+    # Debian #1118166: this calls the function before loading url-lib.sh.
+    # The later call with the live URL remains intact.
+    sed -i '/^get_url_handler$/d' "$file"
+done
+for file in "$root"/usr/lib/dracut/modules.d/*network-legacy/ifup.sh; do
+    # systemd may already have configured loopback in the initramfs.
+    sed -i 's/ip addr add 127\.0\.0\.1\/8 dev lo/ip addr replace 127.0.0.1\/8 dev lo/' "$file"
+done
+
+tmp=$(mktemp "${grub}.XXXXXX")
+trap 'rm -f "$tmp"' EXIT
+awk '
+    /^[[:space:]]*linux[[:space:]]/ && !/rd.debug/ {
+        if ($0 !~ /(^|[[:space:]])ip=/) $0 = $0 " ip=dhcp"
+        if ($0 !~ /(^|[[:space:]])rd.neednet=/) $0 = $0 " rd.neednet=1"
+        if ($0 !~ /(^|[[:space:]])loglevel=/) $0 = $0 " loglevel=3"
+    }
+    { print }
+' "$grub" > "$tmp"
+if ! grep -q 'Client installation - verbose boot diagnostics' "$tmp"; then
+    cat >> "$tmp" <<'EOF'
+
+menuentry "Client installation - verbose boot diagnostics" {
+    search --set=root --file /FAI-CD
+    linux /boot/vmlinuz FAI_FLAGS="menu,verbose,createvt" FAI_ACTION=install FAI_CONFIG_SRC=detect:// rd.live.overlay.overlayfs root=live:CDLABEL=FAI_CD ip=dhcp rd.neednet=1 loglevel=7 rd.debug
+    initrd /boot/initrd.img
+}
+EOF
+fi
+cat "$tmp" > "$grub"
