@@ -487,6 +487,8 @@ All Debian mirrors, security updates, backports, snapshots, NodeSource and
 Docker repositories use HTTPS. Before APT runs, `config/bin/prepare-apt`
 converts HTTP URLs in both `.list` and deb822 `.sources` files and configures
 APT to use the CA bundle with peer and hostname verification enabled.
+It also disables the `http` and `mirror+http` transports, so HTTP repositories
+added later are rejected before any connection is opened.
 Local `file:` repositories are preserved.
 
 `make deps` and image builds refresh the build host's CA package first.

@@ -33,6 +33,8 @@ root=$1; shift
 ! grep -r 'http://' "$root/etc/apt/sources.list" "$root/etc/apt/sources.list.d"
 grep -q 'Verify-Peer "true"' "$root/etc/apt/apt.conf.d/99-frithuz-https"
 grep -q 'Verify-Host "true"' "$root/etc/apt/apt.conf.d/99-frithuz-https"
+grep -Fxq 'Dir::Bin::Methods::http "false";' "$root/etc/apt/apt.conf.d/99-frithuz-https"
+grep -Fxq 'Dir::Bin::Methods::mirror+http "false";' "$root/etc/apt/apt.conf.d/99-frithuz-https"
 printf '%s\n' "$*" >> "$APT_CALLS"
 [[ ${FAIL_APT_UPDATE:-0} != 1 || $* != *' update' ]]
 EOF
@@ -112,7 +114,10 @@ export -f ifclass fcopy
 export apt_cdn=https://deb.debian.org release=trixie
 for snapshot in '' 20261031T000000Z; do
     fcopy
+    rm -f "$target/etc/apt/apt.conf.d/99-frithuz-https"
     APT_SNAPSHOT=$snapshot bash "$cfg/scripts/LAST/96-final-sources"
     ! grep -r 'http://' "$target/etc/apt/sources.list" "$target/etc/apt/sources.list.d"
+    grep -Fxq 'Dir::Bin::Methods::http "false";' "$target/etc/apt/apt.conf.d/99-frithuz-https"
+    grep -Fxq 'Dir::Bin::Methods::mirror+http "false";' "$target/etc/apt/apt.conf.d/99-frithuz-https"
 done
 echo 'APT HTTPS bootstrap: ok'

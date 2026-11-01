@@ -17,6 +17,9 @@ grep -q '^-----BEGIN CERTIFICATE-----' "$bundle" || {
 "$(dirname "$0")/https-apt-sources" "$root/etc/apt"
 mkdir -p "$root/etc/apt/apt.conf.d"
 cat > "$root/etc/apt/apt.conf.d/99-frithuz-https" <<'EOF'
+// Reject HTTP sources before starting a transport or opening a connection.
+Dir::Bin::Methods::http "false";
+Dir::Bin::Methods::mirror+http "false";
 // Use the seeded bundle even before openssl creates its default trust links.
 Acquire::https::CaInfo "/etc/ssl/certs/ca-certificates.crt";
 Acquire::https::Verify-Peer "true";
