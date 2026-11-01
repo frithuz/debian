@@ -2,6 +2,12 @@
 # sudo-rs instead of sudo. Debian's sudo-rs only installs sudo-rs and visudo-rs, with
 # no sudoers or PAM files, so add those and the usual command names. su stays
 # util-linux's (HARDEN/20-pam restricts it via /etc/pam.d/su).
+#
+# Members of sudo keep their own PATH under sudo (!secure_path), so sudo only finds
+# what is on it. Debian leaves the sbin directories off non-root PATHs, which would
+# make `sudo cis-check` or `sudo nft` "command not found". Put them on everyone's PATH:
+# /etc/environment (read by pam_env, so ssh sessions, including non-interactive ones),
+# /etc/profile (login shells) and login.defs (login, su).
 
 error=0; trap 'error=$(($?>$error?$?:$error))' ERR # save maximum error code
 
@@ -10,5 +16,14 @@ fcopy -M /etc/pam.d/sudo
 $ROOTCMD visudo-rs -cf /etc/sudoers
 fai-link /usr/bin/sudo sudo-rs
 fai-link /usr/sbin/visudo ../bin/visudo-rs
+
+user_path=/usr/local/bin:/usr/bin:/bin:/usr/local/games:/usr/games
+sbin_path=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/games:/usr/games
+ainsl -a /etc/environment "^PATH=\"$sbin_path\"$"
+fai-sed "s|PATH=\"$user_path\"|PATH=\"$sbin_path\"|" /etc/profile
+fai-sed "s|^ENV_PATH\(\s\+\)PATH=$user_path\$|ENV_PATH\1PATH=$sbin_path|" /etc/login.defs
+# fail if a base-files or login update changed the lines these edits expect
+grep -qF "PATH=\"$sbin_path\"" $target/etc/profile || { echo "sbin not added to PATH in /etc/profile"; false; }
+grep -qE "^ENV_PATH\s+PATH=$sbin_path\$" $target/etc/login.defs || { echo "sbin not added to ENV_PATH in /etc/login.defs"; false; }
 
 exit $error

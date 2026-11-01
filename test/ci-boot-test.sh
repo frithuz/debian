@@ -141,6 +141,12 @@ sudo_version=$(vm 'sudo --version' 2>&1) || true
 [[ $sudo_version == sudo-rs* ]] || bad "sudo is not sudo-rs: $(head -1 <<< "$sudo_version")"
 # -n: fail instead of prompting. jonathan has no password, so a prompt means no NOPASSWD rule.
 vm 'sudo -n true' || bad "$user has no passwordless sudo"
+# sbin is on $user's PATH (DEBIAN/30-sudo-rs), in plain ssh sessions and login shells.
+# sudo searches the caller's PATH, so without it `sudo cis-check` is "command not found".
+for sh in 'echo "$PATH"' 'bash -lc '\''echo "$PATH"'\'''; do
+    p=$(vm "$sh" 2>&1) || true
+    [[ :$p: == *:/usr/sbin:* && :$p: == *:/usr/local/sbin:* ]] || bad "no sbin on $user's PATH ($sh): '$p'"
+done
 # The caller's PATH survives sudo (Defaults:%sudo !secure_path in /etc/sudoers).
 mapfile -t paths < <(vm 'export PATH=/opt/ci-path-test:$PATH; echo "$PATH"; sudo -n sh -c '\''echo "$PATH"'\''' 2>&1)
 [[ ${paths[0]} == /opt/ci-path-test:* && ${paths[1]-} == "${paths[0]}" ]] \
