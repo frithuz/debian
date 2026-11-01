@@ -171,8 +171,9 @@ Hardened machines refresh APT indexes and run unattended upgrades daily through
 `apt-daily.timer` and `apt-daily-upgrade.timer`. The managed policy in
 `files/etc/apt/apt.conf.d/52-frithuz-unattended-upgrades/HARDEN` retains Debian's
 base and security updates, and adds `trixie-updates`, Docker's stable repository,
-and the configured NodeSource Node.js 26.x repository. Metal also permits updates
-from `trixie-backports`, including its installed kernel and Realtek firmware.
+the configured NodeSource Node.js 26.x repository, and GitHub CLI's stable
+repository. Metal also permits updates from `trixie-backports`, including its
+installed kernel and Realtek firmware.
 Normal APT priorities remain in effect; this does not switch other packages to
 backports. Repository signatures and the existing per-repository keys are still
 required. Vendor repositories do not separate security fixes from other updates,
@@ -182,7 +183,7 @@ Check the policy and the next upgrade without installing anything:
 
 ```sh
 sudo apt-get --error-on=any update
-apt-cache policy nodejs docker-ce docker-ce-cli containerd.io
+apt-cache policy nodejs docker-ce docker-ce-cli containerd.io gh
 sudo unattended-upgrade --dry-run --debug
 systemctl list-timers apt-daily.timer apt-daily-upgrade.timer
 sudo tail -n 100 /var/log/unattended-upgrades/unattended-upgrades.log
@@ -571,6 +572,31 @@ The committed NodeSource signing key comes from
 <https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key>, with fingerprint
 `6F71 F525 2828 41EE DAF8 51B4 2F59 B5F9 9B1B E0B4`.
 
+## GitHub CLI
+
+Every cloud image and metal installation includes `gh` from
+[GitHub's official APT repository](https://github.com/cli/cli/blob/trunk/docs/install_linux.md#debian).
+`hooks/instsoft.SERVER` installs the scoped signing key, the
+`files/etc/apt/sources.list.d/github-cli.sources/SERVER` source, and a package
+preference for GitHub's build before FAI installs the shared `SERVER` packages.
+The repository remains enabled for subsequent upgrades, including daily
+unattended upgrades. Debian's `APT_SNAPSHOT` does not freeze GitHub CLI releases.
+
+The committed keyring in `files/etc/apt/keyrings/github-cli.asc/SERVER` comes
+from <https://cli.github.com/packages/githubcli-archive-keyring.asc>. Its current
+signing key has fingerprint `7F38 BBB5 9D06 4DBC B3D8 4D72 5612 B364 6231 3325`.
+
+On first boot, `/usr/local/libexec/install-user-agents` also installs
+[GitHub's stacked PR extension](https://github.com/github/gh-stack) and
+[GitHub's Actions lockfile extension](https://github.com/github/gh-actions-lock)
+as `jonathan`, using `gh extension install` with their full repository URLs.
+GitHub CLI extensions are scoped to the user; their binaries live under
+`~/.local/share/gh/extensions` and run with `gh stack` and `gh actions-lock`.
+Installation needs no GitHub credentials. Run `gh auth login` as `jonathan`
+before using authenticated GitHub operations. Retries skip working extensions.
+APT updates `gh`; update the extensions separately with
+`gh extension upgrade stack` and `gh extension upgrade actions-lock` as `jonathan`.
+
 ## How FAI composes a machine: classes
 
 Every cloud and metal machine uses Debian's standard `pam_motd` integration
@@ -673,7 +699,7 @@ Makefile                   class lists for each artifact + build/test targets
 test/qemu.sh               UEFI QEMU runner (user-data seed for cloud, blank NVMe disk for metal, unattended install when headless)
 test/compare-packages.sh   diff two packages.tsv manifests
 test/ci-boot-test.sh       headless boot test (cloud image, or unattended ISO install + boot): SSH login, cloud-init, cis-check, package drift
-test/check-package-names.sh  package_config/ names vs. Debian and NodeSource, per arch (network, no root)
+test/check-package-names.sh  package_config/ names vs. Debian and vendor indexes, per arch (network, no root)
 .github/workflows/build.yml  CI: lint, then build + boot-test amd64 and arm64 natively
 .github/workflows/release.yml  manual: build via build.yml, then a draft release with checksums
 ```

@@ -58,3 +58,12 @@ for tool in claude codex pnpm; do
     esac
     "$tool_path" --version
 done
+
+# GitHub CLI extensions are per-user. Public extension installation needs no
+# credentials; keep it non-interactive during cloud-init and skip working copies.
+for extension in stack actions-lock; do
+    if ! gh "$extension" --version >/dev/null 2>&1; then
+        GH_PROMPT_DISABLED=1 gh extension install "https://github.com/github/gh-$extension"
+    fi
+    gh "$extension" --version
+done

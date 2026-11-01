@@ -53,6 +53,10 @@ class UpdatePolicy(unittest.TestCase):
             origin=". nodistro", label=". nodistro", codename="nodistro",
             archive="nodistro", component="main", site="deb.nodesource.com",
         )
+        github_cli = dict(
+            origin="gh", label="gh", codename="stable",
+            archive="", component="main", site="cli.github.com",
+        )
         cases = [
             (True, origin()),
             (True, origin(codename="trixie-security", label="Debian-Security")),
@@ -60,6 +64,7 @@ class UpdatePolicy(unittest.TestCase):
             (True, origin(codename="trixie-updates")),
             (True, origin(**docker)),
             (True, origin(**nodesource)),
+            (True, origin(**github_cli)),
             (False, origin(codename="forky")),
             (False, origin(codename="forky-security", label="Debian-Security")),
             (False, origin(codename="trixie-proposed-updates")),
@@ -68,6 +73,8 @@ class UpdatePolicy(unittest.TestCase):
             (False, origin(**{**docker, "site": "unrelated.example"})),
             (False, origin(**{**nodesource, "site": "unrelated.example"})),
             (False, origin(**{**nodesource, "archive": "other"})),
+            (False, origin(**{**github_cli, "site": "unrelated.example"})),
+            (False, origin(**{**github_cli, "codename": "other"})),
             (False, origin(origin="Unrelated", label="Unrelated")),
         ]
         for metal in (False, True):

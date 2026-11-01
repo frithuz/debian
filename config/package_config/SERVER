@@ -8,6 +8,7 @@ wtmpdb libpam-wtmpdb
 docker-ce docker-ce-cli containerd.io   # Docker's official stable repository
 ca-certificates
 curl
+gh                         # GitHub's official stable repository
 gnupg
 nodejs                     # NodeSource 26.x; instsoft.SERVER omits bundled npm/npx
 chrony

@@ -11,6 +11,8 @@ Unattended-Upgrade::Origins-Pattern {
     // NodeSource uses nodistro for every Debian release. The configured source
     // selects Node.js 26.x; its per-repository Signed-By key remains required.
     "origin=. nodistro,label=. nodistro,archive=nodistro,component=main,site=deb.nodesource.com";
+    // GitHub CLI publishes a Codename, but no Suite, in its Release metadata.
+    "origin=gh,label=gh,codename=stable,component=main,site=cli.github.com";
 };
 
 // Install kernel updates automatically; activate them with a planned reboot.

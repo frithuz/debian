@@ -1,0 +1,3 @@
+Package: gh
+Pin: origin cli.github.com
+Pin-Priority: 600

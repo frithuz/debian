@@ -220,6 +220,13 @@ if (( n > 0 )); then log "imported $n key(s) via ssh_import_id"
 else warn "no keys imported from GitHub (network or API rate limit on shared CI IPs?)"; fi
 
 phase "basics"
+vm 'gh --version' || bad "GitHub CLI is not installed or cannot run"
+vm 'set -e
+    for name in stack actions-lock; do
+        extension="${XDG_DATA_HOME:-$HOME/.local/share}/gh/extensions/gh-$name/gh-$name"
+        test -O "$extension"
+        gh "$name" --version
+    done' || bad "GitHub CLI extensions are missing, not user-owned, or cannot run"
 vm 'set -e
     test -s /etc/ssl/certs/ca-certificates.crt
     dpkg-query -W -f="\${db:Status-Status}" ca-certificates | grep -qx installed

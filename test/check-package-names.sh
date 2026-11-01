@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Check every package name against the Debian, NodeSource and Docker indexes, for
-# each architecture, before any build runs. Needs network; no root.
+# Check every package name against Debian, NodeSource, Docker and GitHub CLI
+# indexes for each architecture before any build runs. Needs network; no root.
 #
 #   test/check-package-names.sh [RELEASE]      (default: trixie)
 #
@@ -15,6 +15,7 @@ here=$(dirname "$(realpath "$0")")
 cfg=$here/../config
 nodesource=$(awk '/^URIs:/ {print $2}' "$cfg/files/etc/apt/sources.list.d/nodesource.sources/SERVER")
 docker_repo=$(awk '/^URIs:/ {print $2}' "$cfg/files/etc/apt/sources.list.d/docker.sources/SERVER")
+github_cli=$(awk '/^URIs:/ {print $2}' "$cfg/files/etc/apt/sources.list.d/github-cli.sources/SERVER")
 tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
 
 cloud_classes() { echo "DEBIAN,FAIBASE,SERVER,HARDEN,CLOUD,$1,DHCPC,GRUB_EFI,CLOUD_EFI,LAST"; }
@@ -30,11 +31,19 @@ for arch in amd64 arm64; do
         | awk '/^Package: / {print $2}' | sort -u > "$tmp/$arch.nodesource"
     curl -fsSL "$docker_repo/dists/$release/stable/binary-$arch/Packages.gz" \
         | gzip -d | awk '/^Package: / {print $2}' | sort -u > "$tmp/$arch.docker"
+    curl -fsSL "$github_cli/dists/stable/main/binary-$arch/Packages.gz" \
+        | gzip -d | awk '/^Package: / {print $2}' | sort -u > "$tmp/$arch.github-cli"
     for classes in "$(cloud_classes "$cls")" "$(metal_classes "$cls")"; do
         "$cfg/bin/resolve-packages" --source-vars "$cfg" "$classes"
     done | sort -u > "$tmp/$arch.wanted"
     while IFS=$'\t' read -r pkg action cls_file; do
         case $pkg in
+            gh)
+                if ! grep -qx "$pkg" "$tmp/$arch.github-cli"; then
+                    echo "$arch: $pkg (package_config/$cls_file) does not exist in $github_cli"
+                    bad=1
+                fi
+                continue ;;
             docker-ce|docker-ce-cli|containerd.io)
                 if ! grep -qx "$pkg" "$tmp/$arch.docker"; then
                     echo "$arch: $pkg (package_config/$cls_file) does not exist in $docker_repo"
@@ -53,6 +62,6 @@ for arch in amd64 arm64; do
         echo "$arch: '$pkg' ($action, package_config/$cls_file) does not exist in $release"
         bad=1
     done < "$tmp/$arch.wanted"
-    echo "$arch: $(cut -f1 "$tmp/$arch.wanted" | sort -u | wc -l) names checked against Debian, NodeSource and Docker"
+    echo "$arch: $(cut -f1 "$tmp/$arch.wanted" | sort -u | wc -l) names checked against Debian, NodeSource, Docker and GitHub CLI"
 done
 exit $bad
