@@ -458,6 +458,17 @@ The committed NodeSource signing key comes from
 
 ## How FAI composes a machine: classes
 
+Metal installs use `frithuz-<mac>` as their hostname, for example
+`frithuz-001c42f09e11`. The suffix is the active Ethernet NIC's MAC address,
+in lowercase without colons. Prefer the NIC used for IPv4 egress, then IPv6
+egress, then another NIC with carrier. MAC order breaks ties between connected
+NICs without a selected route. Wi-Fi and software interfaces are excluded;
+virtual Ethernet NICs in VMs qualify. Installation fails if no active NIC
+has a usable MAC. The name is written to `/etc/hostname`,
+`/etc/hosts`, and the NoCloud metadata so it survives first boot. Machines
+with duplicated MAC addresses will have duplicated names. Cloud images keep
+their provider-assigned naming behavior.
+
 Every host gets an ordered list of **classes**. Every directory in `config/`
 holds files named after classes, and FAI uses the ones that match.
 Later classes override earlier ones.

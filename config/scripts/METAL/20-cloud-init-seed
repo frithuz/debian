@@ -5,12 +5,18 @@
 
 error=0; trap 'error=$(($?>$error?$?:$error))' ERR # save maximum error code
 
+# Derive the installed identity from hardware, not the installer's DHCP name
+# (often localhost). The same name must reach the OS and the NoCloud seed.
+metal_hostname=$("$FAI/bin/metal-hostname") || exit 1
+printf '%s\n' "$metal_hostname" > "$target/etc/hostname" || exit 1
+ainsl -a /etc/hosts "127.0.1.1 $metal_hostname"
+
 seed=$target/var/lib/cloud/seed/nocloud
 install -d -m 0700 $seed
 install -m 0600 $FAI/cloud-init/user-data $seed/user-data
 cat > $seed/meta-data <<META
 instance-id: metal-$(cat /proc/sys/kernel/random/uuid)
-local-hostname: $HOSTNAME
+local-hostname: $metal_hostname
 META
 chmod 0600 $seed/meta-data
 fcopy -M /etc/cloud/cloud.cfg.d/91-datasource.cfg

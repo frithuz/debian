@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# Prefer the installer's routed Ethernet NIC, then another NIC with carrier.
+set -euo pipefail
+net=${1:-/sys/class/net}
+
+route_device() {
+    # Route lookup only; no packets are sent. The kernel chooses by metric.
+    { ip -o "-$1" route get "$2" 2>/dev/null || true; } |
+        awk '{for (i=1; i<NF; i++) if ($i == "dev") {print $(i+1); exit}}'
+}
+ipv4_device=$(route_device 4 1.1.1.1)
+ipv6_device=$(route_device 6 2606:4700:4700::1111)
+
+macs=()
+for nic in "$net"/*; do
+    [[ -e $nic/device && ! -d $nic/wireless ]] || continue
+    [[ -r $nic/type && -r $nic/address ]] || continue
+    [[ $(< "$nic/type") == 1 ]] || continue
+    carrier=$(cat "$nic/carrier" 2>/dev/null) || continue
+    [[ $carrier == 1 ]] || continue
+    mac=$(< "$nic/address")
+    mac=${mac,,}
+    [[ $mac =~ ^([0-9a-f]{2}:){5}[0-9a-f]{2}$ ]] || continue
+    [[ $mac != 00:00:00:00:00:00 ]] || continue
+    # Multicast/broadcast addresses cannot identify a NIC.
+    (( (16#${mac:0:2} & 1) == 0 )) || continue
+    priority=2
+    if [[ ${nic##*/} == "$ipv4_device" ]]; then
+        priority=0
+    elif [[ ${nic##*/} == "$ipv6_device" ]]; then
+        priority=1
+    fi
+    macs+=("$priority $mac")
+done
+
+if (( ${#macs[@]} == 0 )); then
+    echo 'ERROR: no active Ethernet NIC with a usable MAC for the metal hostname' >&2
+    exit 1
+fi
+mac=$(printf '%s\n' "${macs[@]}" | LC_ALL=C sort | awk 'NR == 1 {print $2}')
+printf 'frithuz-%s\n' "${mac//:/}"
