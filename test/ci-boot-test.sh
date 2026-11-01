@@ -220,6 +220,11 @@ if (( n > 0 )); then log "imported $n key(s) via ssh_import_id"
 else warn "no keys imported from GitHub (network or API rate limit on shared CI IPs?)"; fi
 
 phase "basics"
+vm 'set -e
+    dpkg-query -W -f="\${db:Status-Status}" docker-sbx | grep -qx installed
+    sbx version
+    id -nG | tr " " "\n" | grep -qx kvm' \
+    || bad "Docker Sandboxes is missing, cannot run, or the user lacks KVM group access"
 vm 'gh --version' || bad "GitHub CLI is not installed or cannot run"
 vm 'set -e
     for name in stack actions-lock; do

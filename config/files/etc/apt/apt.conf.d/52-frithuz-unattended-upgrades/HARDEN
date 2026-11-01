@@ -8,6 +8,9 @@ Unattended-Upgrade::Origins-Pattern {
     "origin=Debian,codename=${distro_codename}-updates,label=Debian";
     // Docker publishes Suite, but no Codename, in its Release metadata.
     "origin=Docker,label=Docker CE,archive=${distro_codename},component=stable,site=download.docker.com";
+    // Only docker-sbx is eligible from noble; preferences.d/docker-sbx pins
+    // every other package in this repository to -1.
+    "origin=Docker,label=Docker CE,archive=noble,component=stable,site=download.docker.com";
     // NodeSource uses nodistro for every Debian release. The configured source
     // selects Node.js 26.x; its per-repository Signed-By key remains required.
     "origin=. nodistro,label=. nodistro,archive=nodistro,component=main,site=deb.nodesource.com";

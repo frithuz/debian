@@ -15,6 +15,9 @@ here=$(dirname "$(realpath "$0")")
 cfg=$here/../config
 nodesource=$(awk '/^URIs:/ {print $2}' "$cfg/files/etc/apt/sources.list.d/nodesource.sources/SERVER")
 docker_repo=$(awk '/^URIs:/ {print $2}' "$cfg/files/etc/apt/sources.list.d/docker.sources/SERVER")
+sbx_source=$cfg/files/etc/apt/sources.list.d/docker-sbx.sources/SERVER
+sbx_repo=$(awk '/^URIs:/ {print $2}' "$sbx_source")
+sbx_suite=$(awk '/^Suites:/ {print $2}' "$sbx_source")
 github_cli=$(awk '/^URIs:/ {print $2}' "$cfg/files/etc/apt/sources.list.d/github-cli.sources/SERVER")
 tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
 
@@ -31,6 +34,8 @@ for arch in amd64 arm64; do
         | awk '/^Package: / {print $2}' | sort -u > "$tmp/$arch.nodesource"
     curl -fsSL "$docker_repo/dists/$release/stable/binary-$arch/Packages.gz" \
         | gzip -d | awk '/^Package: / {print $2}' | sort -u > "$tmp/$arch.docker"
+    curl -fsSL "$sbx_repo/dists/$sbx_suite/stable/binary-$arch/Packages.gz" \
+        | gzip -d | awk '/^Package: / {print $2}' | sort -u > "$tmp/$arch.sbx"
     curl -fsSL "$github_cli/dists/stable/main/binary-$arch/Packages.gz" \
         | gzip -d | awk '/^Package: / {print $2}' | sort -u > "$tmp/$arch.github-cli"
     for classes in "$(cloud_classes "$cls")" "$(metal_classes "$cls")"; do
@@ -38,6 +43,12 @@ for arch in amd64 arm64; do
     done | sort -u > "$tmp/$arch.wanted"
     while IFS=$'\t' read -r pkg action cls_file; do
         case $pkg in
+            docker-sbx)
+                if ! grep -qx "$pkg" "$tmp/$arch.sbx"; then
+                    echo "$arch: $pkg (package_config/$cls_file) does not exist in $sbx_repo ($sbx_suite)"
+                    bad=1
+                fi
+                continue ;;
             gh)
                 if ! grep -qx "$pkg" "$tmp/$arch.github-cli"; then
                     echo "$arch: $pkg (package_config/$cls_file) does not exist in $github_cli"

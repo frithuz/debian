@@ -1,0 +1,8 @@
+# Docker currently publishes docker-sbx only in its Ubuntu repository.
+# preferences.d/docker-sbx excludes all other packages from this source.
+Types: deb
+URIs: https://download.docker.com/linux/ubuntu
+Suites: noble
+Components: stable
+Architectures: amd64 arm64
+Signed-By: /etc/apt/keyrings/docker.asc

@@ -1,0 +1,7 @@
+Package: docker-sbx
+Pin: release o=Docker,l=Docker CE,a=noble,c=stable
+Pin-Priority: 500
+
+Package: *
+Pin: release o=Docker,l=Docker CE,a=noble
+Pin-Priority: -1

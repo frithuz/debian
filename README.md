@@ -170,7 +170,8 @@ current state.
 Hardened machines refresh APT indexes and run unattended upgrades daily through
 `apt-daily.timer` and `apt-daily-upgrade.timer`. The managed policy in
 `files/etc/apt/apt.conf.d/52-frithuz-unattended-upgrades/HARDEN` retains Debian's
-base and security updates, and adds `trixie-updates`, Docker's stable repository,
+base and security updates, and adds `trixie-updates`, Docker's stable repositories
+(Debian for Engine, Ubuntu noble restricted to Sandboxes),
 the configured NodeSource Node.js 26.x repository, and GitHub CLI's stable
 repository. Metal also permits updates from `trixie-backports`, including its
 installed kernel and Realtek firmware.
@@ -183,7 +184,7 @@ Check the policy and the next upgrade without installing anything:
 
 ```sh
 sudo apt-get --error-on=any update
-apt-cache policy nodejs docker-ce docker-ce-cli containerd.io gh
+apt-cache policy nodejs docker-ce docker-ce-cli containerd.io docker-sbx gh
 sudo unattended-upgrade --dry-run --debug
 systemctl list-timers apt-daily.timer apt-daily-upgrade.timer
 sudo tail -n 100 /var/log/unattended-upgrades/unattended-upgrades.log
@@ -635,6 +636,24 @@ the nftables rules, restart Docker to restore its generated tables. Published
 container ports are governed by Docker's rules; the host input policy allows
 only SSH. MOTD status collection times out if Docker is unresponsive, and
 missing Docker or login history produces a short fallback message.
+
+[Docker Sandboxes](https://docs.docker.com/ai/sandboxes/install/) (`docker-sbx`,
+the `sbx` CLI) is installed on every cloud and metal machine, on amd64 and arm64.
+Docker currently publishes this package in its Ubuntu noble repository rather
+than its Debian repository. `docker-sbx.sources/SERVER` uses the same Docker
+signing key; `preferences.d/docker-sbx/SERVER` allows only `docker-sbx` from
+that source and rejects its other packages. Dependencies come from Debian,
+and unattended upgrades include Sandboxes. Docker's documented Linux support
+is Ubuntu 24.04 or later; this Debian installation is outside that support.
+
+The default user belongs to `kvm` so local Sandboxes can access `/dev/kvm`.
+Local use requires hardware virtualization; VMs and cloud instances also need
+nested virtualization exposed by the host. Installation and CLI checks do not
+require KVM. As `jonathan`, run `sbx login`, then `sbx run claude` or
+`sbx run codex` from a project directory. Authenticate the agent when prompted.
+Existing machines need the additional source and APT pins deployed before
+`sudo apt-get update && sudo apt-get install docker-sbx`, then
+`sudo usermod -aG kvm jonathan` and a new login for group membership to apply.
 
 The console login screen shows the current hostname, IPv4 and IPv6 addresses,
 and SSH username before login. `agetty` expands

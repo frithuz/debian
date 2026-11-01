@@ -13,6 +13,8 @@ fcopy -M /etc/apt/keyrings/nodesource.asc
 fcopy -M /etc/apt/sources.list.d/nodesource.sources
 fcopy -M /etc/apt/keyrings/docker.asc
 fcopy -M /etc/apt/sources.list.d/docker.sources
+fcopy -M /etc/apt/sources.list.d/docker-sbx.sources
+fcopy -M /etc/apt/preferences.d/docker-sbx
 fcopy -M /etc/apt/keyrings/github-cli.asc
 fcopy -M /etc/apt/sources.list.d/github-cli.sources
 fcopy -M /etc/apt/preferences.d/github-cli

@@ -6,7 +6,7 @@ system_info:
     name: jonathan
     lock_passwd: true
     gecos: Jonathan
-    groups: [adm, sudo]
+    groups: [adm, kvm, sudo]
     sudo: ["ALL=(ALL:ALL) NOPASSWD:ALL"]
     shell: /bin/bash
   # Network config goes to systemd-networkd. (Debian's default is ifupdown, which

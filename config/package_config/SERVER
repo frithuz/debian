@@ -6,6 +6,7 @@ libpam-modules libpam-runtime
 coreutils procps iproute2 sed grep mawk hostname
 wtmpdb libpam-wtmpdb
 docker-ce docker-ce-cli containerd.io   # Docker's official stable repository
+docker-sbx                 # Docker Sandboxes; isolated Ubuntu source (see APT pins)
 ca-certificates
 curl
 gh                         # GitHub's official stable repository

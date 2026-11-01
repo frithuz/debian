@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
+# Sandboxes uses /dev/kvm as the login user; keep the group present even when
+# building in a chroot with no virtualization device. cloud-init adds jonathan.
+$ROOTCMD getent group kvm >/dev/null || $ROOTCMD groupadd --system kvm
 if ifclass HARDEN; then
     fcopy -M /etc/systemd/system/docker.service.d/10-nftables.conf
 fi
