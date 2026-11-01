@@ -335,7 +335,7 @@ the ISO (metal seeds come from it) and the tests, but not the cloud image.
 
 | Job | Runner | What it does |
 |---|---|---|
-| `check` | `ubuntu-26.04` | `make check`; every package name checked against the real trixie archive for amd64 and arm64 (`test/check-package-names.sh`); expected package sets for both arches |
+| `check` | `ubuntu-26.04` | `make check`; every package name checked against the trixie and NodeSource archives for amd64 and arm64 (`test/check-package-names.sh`); expected package sets for both arches |
 | `cloud (amd64)` | `ubuntu-26.04` (x64) | build `cloud-amd64.qcow2` natively, then `test/ci-boot-test.sh` |
 | `cloud (arm64)` | `ubuntu-26.04-arm` (Arm64) | the same for `cloud-arm64.qcow2` |
 | `compare` | `ubuntu-26.04` | the build-time manifest must equal what's installed after first boot, per arch |
@@ -433,6 +433,29 @@ This repo is meant to be public. Here's what that exposes and what's kept out:
   from `class/FAIBASE.var`, and the metal installer's own root password (also `fai`,
   from fai-server's `nfsroot.conf`) is locked at build time (see the Makefile).
 
+## Node.js without npm
+
+Every cloud image and metal installation includes Node.js from NodeSource's
+26.x repository, listed with the other server packages in
+`config/package_config/SERVER`. Before package installation,
+`hooks/instsoft.SERVER` installs the repository's HTTPS certificate prerequisite,
+copies its signing key, configures the repository with a scoped `Signed-By` key
+and package preference, and installs `/etc/dpkg/dpkg.cfg.d/omit-npm`. The dpkg
+exclusions leave out bundled npm and npx, including npm's dependency tree, on
+installation and subsequent upgrades. Node.js runs without them.
+
+The repository stays enabled, so normal APT upgrades receive new NodeSource
+26.x releases. Installation fails if the repository refresh fails or the
+selected Node.js version is not NodeSource 26.x. The final checks also verify
+the installed version and absence of npm and npx. Debian's `APT_SNAPSHOT` does
+not freeze NodeSource releases. To move to another major, update
+`files/etc/apt/sources.list.d/nodesource.sources/SERVER`, the version checks in
+`hooks/instsoft.SERVER` and `scripts/LAST/91-verify-node`, and this documentation.
+
+The committed NodeSource signing key comes from
+<https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key>, with fingerprint
+`6F71 F525 2828 41EE DAF8 51B4 2F59 B5F9 9B1B E0B4`.
+
 ## How FAI composes a machine: classes
 
 Every host gets an ordered list of **classes**. Every directory in `config/`
@@ -481,7 +504,7 @@ Makefile                   class lists for each artifact + build/test targets
 test/qemu.sh               UEFI QEMU runner (user-data seed for cloud, blank NVMe disk for metal, unattended install when headless)
 test/compare-packages.sh   diff two packages.tsv manifests
 test/ci-boot-test.sh       headless boot test (cloud image, or unattended ISO install + boot): SSH login, cloud-init, cis-check, package drift
-test/check-package-names.sh  package_config/ names vs. the Debian archive, per arch (network, no root)
+test/check-package-names.sh  package_config/ names vs. Debian and NodeSource, per arch (network, no root)
 .github/workflows/build.yml  CI: lint, then build + boot-test amd64 and arm64 natively
 .github/workflows/release.yml  manual: build via build.yml, then a draft release with checksums
 ```

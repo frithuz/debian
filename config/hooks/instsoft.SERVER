@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# Configure the target before FAI installs package_config/SERVER, on cloud and
+# metal alike. Keep the repository and exclusions for subsequent upgrades.
+set -euo pipefail
+
+case ${FAI_ACTION:-} in
+    install|dirinstall) ;;
+    *) exit 0 ;;
+esac
+
+# The base system may not yet have certificates for the HTTPS repository.
+$ROOTCMD apt-get -y --no-install-recommends install ca-certificates
+fcopy -M /etc/apt/keyrings/nodesource.asc
+fcopy -M /etc/apt/sources.list.d/nodesource.sources
+fcopy -M /etc/apt/preferences.d/nodesource
+fcopy -M /etc/dpkg/dpkg.cfg.d/omit-npm
+chmod 0644 "$target/etc/apt/keyrings/nodesource.asc"
+
+# APT normally tolerates unreachable repositories. Fail rather than install
+# Debian's older nodejs when NodeSource cannot be reached.
+$ROOTCMD apt-get --error-on=any update
+candidate=$($ROOTCMD env LC_ALL=C apt-cache policy nodejs | awk '/Candidate:/ {print $2}')
+case $candidate in
+    26.*nodesource*) ;;
+    *) echo "ERROR: expected NodeSource Node.js 26, candidate is $candidate" >&2; exit 1 ;;
+esac

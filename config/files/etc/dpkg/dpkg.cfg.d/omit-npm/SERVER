@@ -1,0 +1,4 @@
+# NodeSource bundles npm and npx in nodejs. Keep them out on every unpack.
+path-exclude=/usr/lib/node_modules/npm/*
+path-exclude=/usr/bin/npm
+path-exclude=/usr/bin/npx

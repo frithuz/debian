@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Check every package name in package_config/ against the real Debian archive index, for
+# Check every package name in package_config/ against the Debian and NodeSource indexes, for
 # each architecture, before any build runs. Needs network; no root.
 #
 #   test/check-package-names.sh [RELEASE]      (default: trixie)
@@ -13,6 +13,7 @@ release=${1:-trixie}
 mirror=${MIRROR:-https://deb.debian.org/debian}
 here=$(dirname "$(realpath "$0")")
 cfg=$here/../config
+nodesource=$(awk '/^URIs:/ {print $2}' "$cfg/files/etc/apt/sources.list.d/nodesource.sources/SERVER")
 tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
 
 cloud_classes() { echo "DEBIAN,FAIBASE,SERVER,HARDEN,CLOUD,$1,DHCPC,GRUB_EFI,CLOUD_EFI,LAST"; }
@@ -24,14 +25,23 @@ for arch in amd64 arm64; do
     for comp in main contrib non-free non-free-firmware; do
         curl -fsSL "$mirror/dists/$release/$comp/binary-$arch/Packages.xz" | xz -d | awk '/^Package: / {print $2}'
     done | sort -u > "$tmp/$arch.names"
+    curl -fsSL "$nodesource/dists/nodistro/main/binary-$arch/Packages" \
+        | awk '/^Package: / {print $2}' | sort -u > "$tmp/$arch.nodesource"
     for classes in "$(cloud_classes "$cls")" "$(metal_classes "$cls")"; do
         "$cfg/bin/resolve-packages" --source-vars "$cfg" "$classes"
     done | sort -u > "$tmp/$arch.wanted"
     while IFS=$'\t' read -r pkg action cls_file; do
+        if [ "$pkg" = nodejs ] && [ "$action" = install ]; then
+            if ! grep -qx "$pkg" "$tmp/$arch.nodesource"; then
+                echo "$arch: nodejs (package_config/$cls_file) does not exist in $nodesource"
+                bad=1
+            fi
+            continue
+        fi
         grep -qx "$pkg" "$tmp/$arch.names" && continue
         echo "$arch: '$pkg' ($action, package_config/$cls_file) does not exist in $release"
         bad=1
     done < "$tmp/$arch.wanted"
-    echo "$arch: $(cut -f1 "$tmp/$arch.wanted" | sort -u | wc -l) names checked against $(wc -l < "$tmp/$arch.names") packages"
+    echo "$arch: $(cut -f1 "$tmp/$arch.wanted" | sort -u | wc -l) names checked against Debian and NodeSource"
 done
 exit $bad

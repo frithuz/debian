@@ -4,6 +4,7 @@ PACKAGES install-norec
 ca-certificates
 curl
 gnupg
+nodejs                     # NodeSource 26.x; instsoft.SERVER omits bundled npm/npx
 chrony
 vim-tiny
 htop

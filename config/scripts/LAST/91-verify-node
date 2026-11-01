@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# Package-name verification alone cannot distinguish Debian's nodejs from
+# NodeSource's, or detect bundled npm files accidentally being installed.
+set -euo pipefail
+ifclass SERVER || exit 0
+
+version=$($ROOTCMD dpkg-query -W -f='${Version}' nodejs)
+case $version in
+    26.*nodesource*) ;;
+    *) echo "ERROR: expected NodeSource Node.js 26, installed $version" >&2; exit 1 ;;
+esac
+$ROOTCMD node --version
+for path in /usr/bin/npm /usr/bin/npx /usr/lib/node_modules/npm/bin/npm-cli.js; do
+    if [ -e "$target$path" ] || [ -L "$target$path" ]; then
+        echo "ERROR: npm must be omitted: $path exists" >&2
+        exit 1
+    fi
+done
+if [ -d "$target/usr/lib/node_modules/npm" ] &&
+    [ -n "$(find "$target/usr/lib/node_modules/npm" -type f -print -quit)" ]; then
+    echo "ERROR: bundled npm files remain installed" >&2
+    exit 1
+fi
+echo 'NodeSource Node.js 26 installed without npm or npx'
