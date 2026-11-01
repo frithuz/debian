@@ -7,3 +7,6 @@ MODULESLIST=""
 if [ -z "$SERVER" ]; then
     FAI_LOGPROTO=none
 fi
+
+# Recent physical NICs (including RTL8127) need the backports kernel.
+kernelname=${kernelname}/trixie-backports

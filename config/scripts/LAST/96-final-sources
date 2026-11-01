@@ -7,5 +7,8 @@ ifclass SERVER || exit 0
 [ -n "$APT_SNAPSHOT" ] || exit 0
 
 fcopy -SM -c DEBIAN_DEFAULT /etc/apt/sources.list
+if ifclass METAL; then
+    echo "deb $apt_cdn/debian $release-backports main non-free-firmware" >> "$target/etc/apt/sources.list"
+fi
 rm -rf $target/var/lib/apt/lists/*      # stale snapshot indexes; refreshed on first apt update
 echo "apt sources switched from snapshot $APT_SNAPSHOT to live mirrors"

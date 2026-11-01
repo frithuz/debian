@@ -231,6 +231,12 @@ sudo make metal-iso          # first run ~15 min (builds the nfsroot once) -> bu
 make test-metal              # opens a QEMU window: the ISO plus a blank 32G NVMe disk
 ```
 
+The metal ISO and installed system use the kernel and `firmware-realtek` from
+`trixie-backports` to support recent NICs such as the Realtek RTL8127 (which needs
+Linux 6.16 or newer). Cloud images keep the standard trixie cloud kernel. Rebuilding
+after this change recreates the cached installer nfsroot automatically. If using
+`APT_SNAPSHOT`, choose a timestamp with these backports available.
+
 In the QEMU window:
 
 1. In the boot menu, pick **"Client standalone installation - select installation type from menu"**.

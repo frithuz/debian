@@ -17,7 +17,7 @@ PACKAGES install-norec
 firmware-linux-free
 firmware-misc-nonfree
 firmware-bnx2 firmware-bnx2x
-firmware-realtek
+firmware-realtek/trixie-backports
 firmware-netronome firmware-netxen firmware-qlogic
 firmware-intel-misc        # Intel E810 (ice) DDP packages, QAT
 firmware-mediatek          # MediaTek/Ralink Wi-Fi and Bluetooth on home machines

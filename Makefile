@@ -141,11 +141,14 @@ $(FAI_ETC)/NFSROOT: Makefile $(wildcard /etc/fai/NFSROOT /etc/fai/*.conf /etc/fa
 	$(SUDO) sed -i '/^FAI_ROOTPW=/d' $(FAI_ETC)/nfsroot.conf
 	echo "FAI_ROOTPW='!'" | $(SUDO) tee -a $(FAI_ETC)/nfsroot.conf >/dev/null
 	$(SUDO) sed -i '/fai-project\.org/d' $(FAI_ETC)/apt/sources.list
+	# Use backports for the installer kernel and RTL8127 firmware.
+	$(SUDO) sed -i -E 's#^(linux-image-(amd64|arm64))$$#\1/trixie-backports#; s#firmware-realtek([[:space:]]|$$)#firmware-realtek/trixie-backports\1#g' $@
+	echo 'deb http://deb.debian.org/debian trixie-backports main non-free-firmware' | $(SUDO) tee -a $(FAI_ETC)/apt/sources.list >/dev/null
 	# Network installs need DHCP even though the live root is on local media.
 	$(SUDO) sed -i '/^[[:space:]]*linux[[:space:]]/s/$$/ ip=dhcp rd.neednet=1/' $(FAI_ETC)/grub.cfg
 
 /srv/fai/nfsroot/.THIS_IS_THE_FAI_NFSROOT: $(FAI_ETC)/NFSROOT
-	$(SUDO) fai-make-nfsroot -v -C $(FAI_ETC)
+	$(SUDO) fai-make-nfsroot -v -f -C $(FAI_ETC)
 
 nfsroot: /srv/fai/nfsroot/.THIS_IS_THE_FAI_NFSROOT
 
