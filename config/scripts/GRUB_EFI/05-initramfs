@@ -5,14 +5,24 @@ set -euo pipefail
 
 [[ $FAI_ACTION == install || $FAI_ACTION == dirinstall ]] || exit 0
 
-# Fail rather than ship a target with updates still deferred or no generator.
-test -x "$target/usr/sbin/update-initramfs.fai-original"
-rm "$target/usr/sbin/update-initramfs"
-$ROOTCMD dpkg-divert --local --remove --rename \
-    --divert /usr/sbin/update-initramfs.fai-original /usr/sbin/update-initramfs
+# Either provider may have been installed after the diversions were added.
+# Remove both stubs and diversions, including the one for an absent provider.
+for generator in /usr/sbin/update-initramfs /usr/bin/dracut; do
+    rm "$target$generator"
+    $ROOTCMD dpkg-divert --local --remove --rename \
+        --divert "$generator.fai-original" "$generator"
+done
+if [[ -x $target/usr/bin/dracut ]]; then
+    provider=dracut
+elif [[ -x $target/usr/sbin/update-initramfs ]]; then
+    provider=initramfs-tools
+else
+    echo "ERROR: no initramfs generator installed" >&2
+    exit 1
+fi
 
-# -u -k all ignores kernels whose initrd hasn't been created yet. Use -c with
-# an explicit version for every installed kernel, including kernels in the base.
+# Use an explicit version for every installed kernel, including kernels in the
+# base. initramfs-tools -u -k all ignores initrds that haven't been created yet.
 shopt -s nullglob
 kernels=("$target"/boot/vmlinuz-*)
 if (( ${#kernels[@]} == 0 )); then
@@ -21,6 +31,11 @@ if (( ${#kernels[@]} == 0 )); then
 fi
 for kernel in "${kernels[@]}"; do
     version=${kernel##*/vmlinuz-}
-    $ROOTCMD update-initramfs -c -k "$version"
+    if [[ $provider == dracut ]]; then
+        # Match Debian's /etc/kernel/postinst.d/dracut invocation.
+        $ROOTCMD dracut -q --force "/boot/initrd.img-$version" "$version"
+    else
+        $ROOTCMD update-initramfs -c -k "$version"
+    fi
     test -s "$target/boot/initrd.img-$version"
 done
