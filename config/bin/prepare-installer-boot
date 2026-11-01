@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Fix Dracut 106's live-boot noise before regenerating the installer initramfs.
+# Configure installer consoles and fix Dracut 106 before rebuilding the initramfs.
 set -euo pipefail
 root=${1:?installer nfsroot}
 grub=${2:?installer grub.cfg}
@@ -17,6 +17,11 @@ done
 tmp=$(mktemp "${grub}.XXXXXX")
 trap 'rm -f "$tmp"' EXIT
 awk '
+    /^[[:space:]]*linux[[:space:]]/ {
+        # ARM firmware may select an invisible serial console in Parallels.
+        # Use the local display unless an entry explicitly selects a console.
+        if ($0 !~ /(^|[[:space:]])console=/) $0 = $0 " console=tty0"
+    }
     /^[[:space:]]*linux[[:space:]]/ && !/rd.debug/ {
         if ($0 !~ /(^|[[:space:]])ip=/) $0 = $0 " ip=dhcp"
         if ($0 !~ /(^|[[:space:]])rd.neednet=/) $0 = $0 " rd.neednet=1"
@@ -29,7 +34,7 @@ if ! grep -q 'Client installation - verbose boot diagnostics' "$tmp"; then
 
 menuentry "Client installation - verbose boot diagnostics" {
     search --set=root --file /FAI-CD
-    linux /boot/vmlinuz FAI_FLAGS="menu,verbose,createvt" FAI_ACTION=install FAI_CONFIG_SRC=detect:// rd.live.overlay.overlayfs root=live:CDLABEL=FAI_CD ip=dhcp rd.neednet=1 loglevel=7 rd.debug
+    linux /boot/vmlinuz FAI_FLAGS="menu,verbose,createvt" FAI_ACTION=install FAI_CONFIG_SRC=detect:// rd.live.overlay.overlayfs root=live:CDLABEL=FAI_CD ip=dhcp rd.neednet=1 loglevel=7 rd.debug console=tty0
     initrd /boot/initrd.img
 }
 EOF

@@ -279,6 +279,13 @@ Linux 6.16 or newer). Cloud images keep the standard trixie cloud kernel. Rebuil
 after this change recreates the cached installer nfsroot automatically. If using
 `APT_SNAPSHOT`, choose a timestamp with these backports available.
 
+On Apple Silicon, use `metal-arm64.iso` in Parallels. The installer entries use
+`console=tty0` so the install and rescue interface appears in the VM window.
+For an older ISO that shows GRUB followed by a blank cursor, highlight the install
+or rescue entry, press `e`, append `console=tty0` to the line beginning `linux`,
+and press `Ctrl+x` to boot. For a serial-only installation, replace that argument
+with your platform's console, such as `console=ttyAMA0,115200n8`.
+
 In the QEMU window:
 
 1. In the boot menu, pick **"Client standalone installation - select installation type from menu"**.
@@ -424,7 +431,8 @@ the ISO (metal seeds come from it) and the tests, but not the cloud image.
   discovering NICs and writing DHCP configuration. CI also prints network settings
   and the networkd journal to the serial console, so failed SSH boots have diagnostics.
 - **Installer boot output:** the normal ISO entries show only critical kernel
-  messages; the full kernel log remains available with `dmesg`. Choose
+  messages on the local display (`console=tty0`); the full kernel log remains
+  available with `dmesg`. Choose
   **Client installation - verbose boot diagnostics** for full kernel and Dracut
   output. The installer initramfs also fixes Dracut 106's early URL-handler call
   and makes loopback address setup safe to repeat.
@@ -726,7 +734,7 @@ cloud-init if it varies per machine.
 - **UEFI only**, on both arches. The amd64 ISO still boots in legacy BIOS mode (fai-cd
   always builds it that way), but the installer then stops before touching the disks
   (`class/15-uefi-only.sh`).
-- **Serial console:** amd64 sets `console=ttyS0` for IPMI SOL and cloud consoles. arm64
+- **Installed system consoles:** amd64 sets `console=ttyS0` for IPMI SOL and cloud consoles. arm64
   sets nothing, and the kernel uses the console the firmware announces (ACPI SPCR), which
   is `ttyAMA0` on QEMU and many Arm servers and `ttyS0` on others.
 - **Networking** (cloud and metal) is systemd-networkd with systemd-resolved, configured
