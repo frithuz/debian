@@ -1,0 +1,3 @@
+# shellcheck shell=sh
+# Read Debian's version at generation time, including after release upgrades.
+GRUB_DISTRIBUTOR=$(. /usr/lib/os-release; printf 'Frithuz - Debian %s' "$VERSION_ID")

@@ -79,12 +79,15 @@ check:
 	@bash test/check-install-disk.sh
 	@bash test/check-metal-storage.sh
 	@bash test/check-metal-hostname.sh
+	@bash test/check-branding.sh
 	@bash test/check-installer-boot.sh
 	@if command -v lvmconfig >/dev/null; then bash test/check-lvm-autoactivation.sh; \
 	 else echo "installer LVM policy: skipped (install lvm2 to check)"; fi
 	@cd $(CONFIG) && for f in scripts/*/* hooks/*.* bin/*; do [ -x "$$f" ] || { echo "not executable: $$f"; exit 1; }; done && echo "scripts executable: ok"
 	@if command -v shellcheck >/dev/null; then \
 	    shellcheck -S warning -e SC2154,SC2086,SC2034,SC2016 \
+	        config/files/usr/local/sbin/update-frithuz-branding/SERVER \
+	        config/files/etc/default/grub.d/20-frithuz.cfg/SERVER \
 	        config/files/usr/local/libexec/install-user-agents/SERVER \
 	        config/files/usr/local/share/user-agent-path.sh/SERVER \
 	        config/files/var/lib/cloud/scripts/per-instance/50-user-agents/SERVER \

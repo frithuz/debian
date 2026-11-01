@@ -434,6 +434,25 @@ This repo is meant to be public. Here's what that exposes and what's kept out:
   from `class/FAIBASE.var`, and the metal installer's own root password (also `fai`,
   from fai-server's `nfsroot.conf`) is locked at build time (see the Makefile).
 
+## Frithuz identity
+
+Installed machines identify their flavor as Frithuz. `/etc/os-release` sets
+`PRETTY_NAME="Frithuz - Debian 13"`, `VARIANT="Frithuz"`, and
+`VARIANT_ID=frithuz`. Standard tools such as `hostnamectl` display the pretty
+name. Debian's `ID`, `NAME`, version, codename, and support URLs are preserved,
+and `/usr/lib/os-release` remains the unmodified vendor metadata.
+
+`/etc/default/grub.d/20-frithuz.cfg` sets GRUB's distributor label to
+`Frithuz - Debian <VERSION_ID>`; GRUB may append its normal GNU/Linux, kernel,
+and recovery suffixes. The console banner also shows `Flavor: Frithuz`.
+SSH and legal notices retain their existing content.
+
+The Debian-owned `/etc/os-release` symlink is diverted to
+`/etc/os-release.debian`. A local override is generated from the vendor data,
+and an APT hook refreshes it after package updates. When the Debian version
+changes, existing GRUB menus are regenerated too. No Debian version is
+hardcoded in the installed configuration.
+
 ## User-installed coding agents
 
 On first boot, cloud-init runs the official native installers for

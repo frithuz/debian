@@ -216,6 +216,10 @@ if (( n > 0 )); then log "imported $n key(s) via ssh_import_id"
 else warn "no keys imported from GitHub (network or API rate limit on shared CI IPs?)"; fi
 
 phase "basics"
+vm '. /etc/os-release; test "$ID" = debian && test "$VARIANT_ID" = frithuz && test "$PRETTY_NAME" = "Frithuz - Debian $VERSION_ID"' \
+    || bad "Frithuz OS display metadata is missing or changed Debian identity"
+vm '. /etc/os-release; sudo grep -qF "Frithuz - Debian $VERSION_ID" /boot/grub/grub.cfg' \
+    || bad "Frithuz GRUB label is missing"
 # sudo: swapon is in /usr/sbin, and systemctl needs dbus (not installed) unless run as root.
 # Without it these checks see empty output and pass without checking anything.
 sw=$(vm 'sudo swapon --show --noheadings') || bad "could not check swap"

@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# /etc/os-release is a Debian-owned symlink. Divert it so upgrades leave our
+# local override intact; /usr/lib/os-release remains Debian's source of truth.
+set -euo pipefail
+fcopy -m root,root,0755 /usr/local/sbin/update-frithuz-branding
+$ROOTCMD dpkg-divert --local --add --rename \
+    --divert /etc/os-release.debian /etc/os-release
+$ROOTCMD /usr/local/sbin/update-frithuz-branding
+fcopy -M /etc/default/grub.d/20-frithuz.cfg
+fcopy -M /etc/apt/apt.conf.d/90-frithuz-branding

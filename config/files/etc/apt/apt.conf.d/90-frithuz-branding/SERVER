@@ -1,0 +1,2 @@
+// Refresh the local display metadata after Debian updates its vendor file.
+DPkg::Post-Invoke { "/usr/local/sbin/update-frithuz-branding"; };
