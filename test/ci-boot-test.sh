@@ -1,8 +1,13 @@
 #!/usr/bin/env bash
-# Boot test for CI (also runs locally): boot build/cloud-$ARCH.qcow2 headless, log in,
-# and check the running system. Writes results to $OUT (default build/boot-test-$ARCH).
+# Boot test for CI (also runs locally): boot an artifact headless, log in, and check
+# the running system.
 #
-#   ARCH=amd64 test/ci-boot-test.sh build
+#   ARCH=amd64 test/ci-boot-test.sh build          # build/cloud-$ARCH.qcow2
+#   ARCH=amd64 test/ci-boot-test.sh build metal    # build/metal-$ARCH.iso
+#
+# metal first installs from the ISO onto a blank NVMe disk, unattended (see
+# `qemu.sh metal-install`), then boots that disk. Results go to $OUT (default
+# build/boot-test-$ARCH, or build/boot-test-metal-$ARCH).
 #
 # Login uses a throwaway key generated here and added to a copy of the real user-data,
 # so the test doesn't need anyone's private key. The real user-data (incl. the GitHub
@@ -12,6 +17,8 @@
 #   - SSH comes up as the default user; cloud-init finishes without errors
 #   - no swap; DNS works, LLMNR off; packages.tsv present; live package list captured (live-packages.tsv)
 #   - `cis-check` passes on the running system (after the first-boot AIDE baseline)
+#   - metal: FAI finishes and powers off, reports no task errors (its logs are saved
+#     in fai-install/), used the hardened classes, and created the separate mounts
 # Warnings only: GitHub key import (rate limits on shared CI IPs), failed units (their
 # journals are saved as journal-UNIT.txt).
 #
@@ -22,15 +29,18 @@
 set -euo pipefail
 
 build=$(realpath "${1:?build dir}")
+kind=${2:-cloud}
+[[ $kind == cloud || $kind == metal ]] || { echo "unknown artifact: $kind (cloud | metal)" >&2; exit 2; }
 arch=${ARCH:-$(dpkg --print-architecture)}
 here=$(dirname "$(realpath "$0")")
-out=${OUT:-$build/boot-test-$arch}
+if [[ $kind == cloud ]]; then out=${OUT:-$build/boot-test-$arch}; else out=${OUT:-$build/boot-test-metal-$arch}; fi
 user=${SSH_USER:-jonathan}
 rm -rf "$out"; mkdir -p "$out"
 export QEMU_WORK=$out/qemu ARCH=$arch HEADLESS=1
 
-if [[ -w /dev/kvm && $arch == "$(dpkg --print-architecture)" ]]; then boot_timeout=600 ci_timeout=600 aide_timeout=1200
-else boot_timeout=2400 ci_timeout=2400 aide_timeout=3600; fi     # emulated: much slower
+if [[ -w /dev/kvm && $arch == "$(dpkg --print-architecture)" ]]; then
+    install_timeout=3600 boot_timeout=600 ci_timeout=600 aide_timeout=1200
+else install_timeout=10800 boot_timeout=2400 ci_timeout=2400 aide_timeout=3600; fi     # emulated: much slower
 heartbeat=60   # seconds between "still waiting" lines
 
 # --- progress output -------------------------------------------------------------
@@ -54,7 +64,7 @@ summary() { # RESULT
             printf '| **total** | **%s** |\n' "$(mmss $SECONDS)")
     printf '\n%s\n' "$table"
     if [[ -n ${GITHUB_STEP_SUMMARY:-} ]]; then
-        printf '### Boot test (%s): %s\n\n%s\n\n' "$arch" "$1" "$table" >> "$GITHUB_STEP_SUMMARY"
+        printf '### Boot test (%s, %s): %s\n\n%s\n\n' "$kind" "$arch" "$1" "$table" >> "$GITHUB_STEP_SUMMARY"
     fi
 }
 
@@ -72,25 +82,58 @@ else
     { cat "$src"; printf '\nssh_authorized_keys:\n  - %s\n' "$key"; } > "$out/user-data"
 fi
 
+# QEMU removes its pidfile when it exits, so remember the PID.
+qemu_pid='' serial_pid=''
+start_qemu() { # qemu.sh arguments
+    "$here/qemu.sh" "$@" "$build"
+    qemu_pid=$(cat "$QEMU_WORK/qemu.pid")
+    # Serial console -> job log, live. tail exits with QEMU; ANSI colours and CRs stripped.
+    if [[ ${SERIAL:-1} == 1 ]]; then
+        tail -n +1 -F --pid="$qemu_pid" "$QEMU_WORK/serial.log" 2>/dev/null \
+            | sed -u -e 's/\x1b\[[0-9;?]*[A-Za-z]//g' -e 's/\r//g' -e 's/^/[vm] /' &
+        serial_pid=$!
+    fi
+}
+stop_qemu() {
+    if [[ -n $qemu_pid ]]; then kill "$qemu_pid" 2>/dev/null || true; fi
+    if [[ -n $serial_pid ]]; then sleep 1; kill "$serial_pid" 2>/dev/null || true; fi
+    qemu_pid='' serial_pid=''
+}
+qemu_running() { [[ -n $qemu_pid && -e /proc/$qemu_pid ]]; }
+
 cleanup() {
     local rc=$?
     phase
-    if [[ -f $QEMU_WORK/qemu.pid ]]; then kill "$(cat "$QEMU_WORK/qemu.pid")" 2>/dev/null || true; fi
-    if [[ -n ${serial_pid:-} ]]; then sleep 1; kill "$serial_pid" 2>/dev/null || true; fi
+    stop_qemu
     cp -f "$QEMU_WORK/serial.log" "$out/serial.log" 2>/dev/null || true
-    rm -f "$QEMU_WORK/id_ci" "$QEMU_WORK/cloud-run.qcow2"
+    rm -f "$QEMU_WORK/id_ci" "$QEMU_WORK/cloud-run.qcow2" "$QEMU_WORK/metal-$arch-disk.qcow2"
     if [[ $rc == 0 && $fail == 0 ]]; then summary passed; else summary FAILED; fi
 }
 trap cleanup EXIT
 
-USERDATA=$out/user-data "$here/qemu.sh" cloud "$build"
-
-# Serial console -> job log, live. tail exits with QEMU; ANSI colours and CRs stripped.
-if [[ ${SERIAL:-1} == 1 ]]; then
-    tail -n +1 -F --pid="$(cat "$QEMU_WORK/qemu.pid")" "$QEMU_WORK/serial.log" 2>/dev/null \
-        | sed -u -e 's/\x1b\[[0-9;?]*[A-Za-z]//g' -e 's/\r//g' -e 's/^/[vm] /' &
-    serial_pid=$!
+if [[ $kind == metal ]]; then
+    phase "install from ISO (up to ${install_timeout}s)"
+    # The install uses the user-data baked into the ISO; the test key comes in at boot.
+    start_qemu metal-install
+    deadline=$((SECONDS + install_timeout)) next=$((SECONDS + heartbeat))
+    while qemu_running; do
+        if grep -q 'FATAL ERROR' "$QEMU_WORK/serial.log" 2>/dev/null; then
+            bad "FAI stopped the installation (see install-serial.log)"; exit 1
+        fi
+        (( SECONDS < deadline )) || { bad "install not finished within ${install_timeout}s (see install-serial.log)"; exit 1; }
+        if (( SECONDS >= next )); then
+            log "still installing: $(sed -e 's/\x1b\[[0-9;?]*[A-Za-z]//g' -e 's/\r//g' "$QEMU_WORK/serial.log" 2>/dev/null | grep -v '^\s*$' | tail -1)"
+            next=$((SECONDS + heartbeat))
+        fi
+        sleep 10
+    done
+    stop_qemu
+    mv "$QEMU_WORK/serial.log" "$out/install-serial.log"
+    log "installer powered off"
+    phase "start VM (installed disk)"
 fi
+export USERDATA=$out/user-data
+if [[ $kind == metal ]]; then start_qemu metal-boot; else start_qemu cloud; fi
 
 # One multiplexed connection: nftables rate-limits new SSH connections (15/min).
 ssh_opts=(-p 2222 -i "$QEMU_WORK/id_ci" -o IdentitiesOnly=yes -o BatchMode=yes
@@ -170,6 +213,28 @@ for unit in $(awk '{print $1}' "$out/failed-units.txt"); do
     tail -n 20 "$out/journal-$unit.txt" | sed "s/^/  [$unit] /"
 done
 
+if [[ $kind == metal ]]; then
+    phase "metal install"
+    # FAI's logs from the install, saved on the disk (fai-savelog), incl. its cis-check.txt
+    mkdir -p "$out/fai-install"
+    vm 'sudo tar -C /var/log/fai/metal-test/last/ -cf - .' | tar -C "$out/fai-install" -xf - \
+        || bad "no FAI install logs in /var/log/fai/metal-test/last/"
+    task_error=$(cat "$out/fai-install/task_error" 2>/dev/null || echo missing)
+    if [[ $task_error != 0 ]]; then
+        bad "FAI install reported errors (task_error: $task_error; see fai-install/)"
+        tail -n 20 "$out/fai-install/error.log" 2>/dev/null | sed 's/^/  [error.log] /' || true
+    fi
+    classes=$(tr '\n' ' ' < "$out/fai-install/FAI_CLASSES" 2>/dev/null || true)
+    log "classes: $classes"
+    for c in DEBIAN SERVER HARDEN METAL GRUB_EFI METAL_EFI LAST; do
+        [[ " $classes " == *" $c "* ]] || bad "class $c missing from the install"
+    done
+    for m in /boot /boot/efi /var /var/log /var/log/audit /home /tmp; do
+        vm "findmnt -n '$m' >/dev/null" || bad "$m is not a separate mount"
+    done
+    vm 'sudo test -s /var/lib/cloud/seed/nocloud/user-data' || bad "no NoCloud seed baked into the install"
+fi
+
 phase "AIDE first-boot baseline (up to ${aide_timeout}s)"
 deadline=$((SECONDS + aide_timeout)) next=0
 aide_state() { vm 'sudo systemctl show -p ActiveState --value aide-firstboot-init.service'; }
@@ -198,7 +263,7 @@ fi
 
 phase "power off"
 vm 'sudo systemctl poweroff' 2>/dev/null || true
-for _ in $(seq 60); do [[ -e /proc/$(cat "$QEMU_WORK/qemu.pid" 2>/dev/null || echo 0) ]] || break; sleep 2; done
+for _ in $(seq 60); do qemu_running || break; sleep 2; done
 
-[[ $fail == 0 ]] && log "== boot test passed ($arch)" || log "== boot test FAILED ($arch); results in $out"
+[[ $fail == 0 ]] && log "== boot test passed ($kind, $arch)" || log "== boot test FAILED ($kind, $arch); results in $out"
 exit $fail

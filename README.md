@@ -316,7 +316,7 @@ the ISO (metal seeds come from it) and the tests, but not the cloud image.
 | `cloud (amd64)` | `ubuntu-26.04` (x64) | build `cloud-amd64.qcow2` natively, then `test/ci-boot-test.sh` |
 | `cloud (arm64)` | `ubuntu-26.04-arm` (Arm64) | the same for `cloud-arm64.qcow2` |
 | `compare` | `ubuntu-26.04` | the build-time manifest must equal what's installed after first boot, per arch |
-| `metal (amd64/arm64)` | both | build `metal-<arch>.iso` natively |
+| `metal (amd64/arm64)` | both | build `metal-<arch>.iso` natively, install from it unattended and boot the result (`test/ci-boot-test.sh build metal`) |
 
 - **Build environment:** every build runs in a privileged `debian:trixie` container with
   the host's `/dev`, which FAI needs for loop devices and chroots. Docker pulls the
@@ -328,9 +328,21 @@ the ISO (metal seeds come from it) and the tests, but not the cloud image.
   Progress is logged as it goes: elapsed-time prefixes, a status line about once a
   minute while waiting, and the VM's serial console with a `[vm]` prefix. The run's
   summary page gets a table of how long each phase took.
+- **The metal test** first installs from the ISO onto a blank 32G NVMe disk. It boots
+  the ISO's own kernel and initrd straight from QEMU, using the arguments of the
+  "Client standalone installation" boot entry without the profile menu and with
+  `halt` added (FAI powers off when done). Without the menu, the classes come from
+  `class/50-host-classes`, which picks the same ones as the "Hardened server" profile
+  except `INSTALL` (which only shows the disk-wipe warning). It then boots the
+  installed disk with a `cidata` seed drive carrying the test key. That seed's
+  user-data replaces the one baked into the install. After that, it runs the same
+  checks as the cloud test, plus: FAI reported no task errors, the hardened classes
+  were used, the CIS mounts exist, and the install manifest matches what's installed.
+  The GRUB menu and profile dialog themselves are not exercised. To run it locally:
+  `ARCH=<arch> test/ci-boot-test.sh build metal`.
 - **KVM:** the "Host facts" step prints whether `/dev/kvm` is available. x64 runners
-  have it. If the Arm64 runner doesn't, its boot test still runs, but emulated, so it's
-  much slower (the job allows 150 minutes).
+  have it. If the Arm64 runner doesn't, its boot tests still run, but emulated, so they're
+  much slower (the cloud job allows 150 minutes, the metal job 210).
 - **Artifacts:** reports and FAI logs on every run, images on non-PR runs. All are kept for 1 day.
   Any signed-in GitHub user can download artifacts of a public repository; see below.
 - **Action pins:** third-party actions are pinned to commit SHAs. To update, resolve the
@@ -424,9 +436,9 @@ config/
   bin/resolve-packages     package_config/ -> final package list (used by the check and `make packages`)
   hooks/                   run before FAI's built-in tasks (upstream defaults)
 Makefile                   class lists for each artifact + build/test targets
-test/qemu.sh               UEFI QEMU runner (user-data seed for cloud, blank NVMe disk for metal)
+test/qemu.sh               UEFI QEMU runner (user-data seed for cloud, blank NVMe disk for metal, unattended install when headless)
 test/compare-packages.sh   diff two packages.tsv manifests
-test/ci-boot-test.sh       headless boot test: SSH login, cloud-init, cis-check, package drift
+test/ci-boot-test.sh       headless boot test (cloud image, or unattended ISO install + boot): SSH login, cloud-init, cis-check, package drift
 test/check-package-names.sh  package_config/ names vs. the Debian archive, per arch (network, no root)
 .github/workflows/build.yml  CI: lint, then build + boot-test amd64 and arm64 natively
 .github/workflows/release.yml  manual: build via build.yml, then a draft release with checksums
