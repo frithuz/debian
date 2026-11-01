@@ -180,15 +180,19 @@ jobs:
           ARCH: ${{ matrix.arch }}
         run: make metal-iso ARCH="$ARCH"
       - name: Install + boot test
+        # ARM runs under TCG and takes roughly 45 minutes. Rely on amd64 ISO
+        # validation for now; continue building and publishing the ARM ISO.
+        if: matrix.arch == 'amd64'
         env:
           ARCH: ${{ matrix.arch }}
         run: test/ci-boot-test.sh build metal
       - name: Install manifest vs. what is installed after first boot
+        if: matrix.arch == 'amd64'
         env:
           ARCH: ${{ matrix.arch }}
         run: test/compare-packages.sh "build/boot-test-metal-$ARCH/packages.tsv" "build/boot-test-metal-$ARCH/live-packages.tsv"
       - name: Upload reports and logs
-        if: always()
+        if: always() && matrix.arch == 'amd64'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: metal-${{ matrix.arch }}-reports

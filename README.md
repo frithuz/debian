@@ -333,7 +333,8 @@ the ISO (metal seeds come from it) and the tests, but not the cloud image.
 | `cloud (amd64)` | `ubuntu-26.04` (x64) | build `cloud-amd64.qcow2` natively, then `test/ci-boot-test.sh` |
 | `cloud (arm64)` | `ubuntu-26.04-arm` (Arm64) | the same for `cloud-arm64.qcow2` |
 | `compare` | `ubuntu-26.04` | the build-time manifest must equal what's installed after first boot, per arch |
-| `metal (amd64/arm64)` | both | build `metal-<arch>.iso` natively, install from it unattended and boot the result (`test/ci-boot-test.sh build metal`) |
+| `metal (amd64)` | `ubuntu-26.04` | build the ISO, install from it unattended, boot the result, and compare package manifests |
+| `metal (arm64)` | `ubuntu-26.04-arm` | build and upload the ISO; install/boot validation is temporarily skipped |
 
 - **Build environment:** every build runs in a privileged `debian:trixie` container with
   the host's `/dev`, which FAI needs for loop devices and chroots. Docker pulls the
@@ -345,7 +346,10 @@ the ISO (metal seeds come from it) and the tests, but not the cloud image.
   Progress is logged as it goes: elapsed-time prefixes, a status line about once a
   minute while waiting, and the VM's serial console with a `[vm]` prefix. The run's
   summary page gets a table of how long each phase took.
-- **The metal test** first installs from the ISO onto a blank 64G NVMe disk. It boots
+- **The metal test** runs on amd64 in CI; ARM ISO validation relies on amd64 for
+  now because its emulated install/boot test takes about 45 minutes. Local tests
+  remain available on both architectures. The test first installs from the ISO
+  onto a blank 64G NVMe disk. It boots
   the ISO's own kernel and initrd straight from QEMU, using the arguments of the
   "Client standalone installation" boot entry without the profile menu and with
   `halt` added (FAI powers off when done). Without the menu, the classes come from
@@ -359,7 +363,8 @@ the ISO (metal seeds come from it) and the tests, but not the cloud image.
   `ARCH=<arch> test/ci-boot-test.sh build metal`.
 - **KVM:** the "Host facts" step prints whether `/dev/kvm` is available. x64 runners
   have it. If the Arm64 runner doesn't, its boot tests still run, but emulated, so they're
-  much slower (the cloud job allows 150 minutes, the metal job 210).
+  much slower (the cloud job allows 150 minutes). ARM cloud boot tests remain enabled;
+  ARM ISO install/boot tests are temporarily skipped.
 - **Install time:** package-triggered initramfs generation is deferred during fresh
   installs. The real command is restored and each kernel's initramfs is generated
   once after system configuration, before GRUB setup. Installed systems retain
