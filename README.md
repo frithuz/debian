@@ -336,8 +336,9 @@ sudo dd if=build/metal-amd64.iso of=/dev/sdX bs=4M status=progress conv=fsync
 Boot the server from it in **UEFI** mode, with network access. **The installer wipes
 the selected internal disk.** USB, removable, read-only, in-use disks (including
 mounted partitions and active swap), and disks smaller than 56 GiB are excluded.
-Interactive installs show a target-disk menu with each eligible drive's size,
-model, and serial number. Cancelling stops before partitioning. Unattended installs
+Interactive installs automatically select the disk when exactly one is eligible.
+With multiple eligible disks, a target-disk menu shows each drive's size, model,
+and serial number. Cancelling stops before partitioning. Unattended installs
 require exactly one eligible disk, or an explicit
 `FAI_INSTALL_DISK=/dev/disk/by-id/...` on the kernel command line. That option also
 bypasses the interactive menu; the same exclusions still apply. Use `lsblk` in the

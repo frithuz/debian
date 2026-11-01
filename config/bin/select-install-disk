@@ -39,7 +39,7 @@ while read -r disk type; do
     candidates+=("$disk")
 done <<< "$inventory"
 
-if (( interactive && ${#candidates[@]} > 0 )) && [[ -z $requested ]]; then
+if (( interactive && ${#candidates[@]} > 1 )) && [[ -z $requested ]]; then
     options=()
     for disk in "${candidates[@]}"; do
         description=$(lsblk --nodeps --noheadings --output SIZE,MODEL,SERIAL "$disk")

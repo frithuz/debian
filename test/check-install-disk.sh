@@ -38,11 +38,11 @@ export PATH=$work/bin:$PATH
 
 selected() {
     local actual
-    actual=$("$selector" "${2:-}" 2> "$work/stderr")
+    actual=$("$selector" "${@:2}" 2> "$work/stderr")
     [[ $actual == "$1" ]] || { echo "expected $1, got $actual" >&2; exit 1; }
 }
 refused() {
-    if "$selector" "${1:-}" > "$work/stdout" 2> "$work/stderr"; then
+    if "$selector" "$@" > "$work/stdout" 2> "$work/stderr"; then
         echo "unsafe or ambiguous disk selection succeeded" >&2
         exit 1
     fi
@@ -123,6 +123,18 @@ actual=$("$selector" --interactive /dev/nvme0n1 2> "$work/stderr")
 
 : > "$DISK_FIXTURE"
 refused
+refused --interactive
+
+# Interactive installs auto-select the sole eligible disk without a menu,
+# even when excluded devices are also present. Explicit choices still apply.
+rm -f "$DIALOG_ARGS"
+cat > "$DISK_FIXTURE" <<'EOF'
+/dev/sda|disk|0|0|64000000000|usb|-
+/dev/nvme0n1|disk|0|0|256000000000|nvme|-
+EOF
+selected /dev/nvme0n1 --interactive
+refused --interactive /dev/sda
+[[ ! -e $DIALOG_ARGS ]]
 
 # QEMU's single blank NVMe disk remains eligible, as does internal eMMC.
 printf '/dev/nvme0n1|disk|0|0|68719476736|nvme|-\n' > "$DISK_FIXTURE"
@@ -144,6 +156,7 @@ export FAI=$work/fai FAI_ACTION=install LOGDIR=$work
 udevadm() { return 0; }
 task_error() { [[ $1 == 999 ]]; }
 export -f udevadm task_error
+export flag_menu=1
 bash -ec 'source "$FAI/hooks/partition.METAL.sh"; [[ $disklist == mmcblk0 ]]' > "$work/hook.log"
 cat > "$DISK_FIXTURE" <<'EOF'
 /dev/nvme0n1|disk|0|0|256000000000|nvme|-
