@@ -2,9 +2,14 @@
 # Print one safe whole-disk target. Read-only: never modifies storage.
 set -euo pipefail
 
+interactive=0
+if [[ ${1:-} == --interactive ]]; then
+    interactive=1
+    shift
+fi
 requested=${1:-}
 candidates=()
-inventory=$(lsblk --nodeps --noheadings --paths --output NAME,TYPE)
+inventory=$(lsblk --nodeps --noheadings --paths --output NAME,TYPE | LC_ALL=C sort -k1,1)
 while read -r disk type; do
     [[ $type == disk ]] || continue
     if ! facts=$(lsblk --nodeps --noheadings --bytes --output RM,RO,SIZE,TRAN "$disk"); then
@@ -33,6 +38,23 @@ while read -r disk type; do
     fi
     candidates+=("$disk")
 done <<< "$inventory"
+
+if (( interactive && ${#candidates[@]} > 0 )) && [[ -z $requested ]]; then
+    options=()
+    for disk in "${candidates[@]}"; do
+        description=$(lsblk --nodeps --noheadings --output SIZE,MODEL,SERIAL "$disk")
+        options+=("$disk" "$description")
+    done
+    # Keep the dialog attached to the installer's terminal while capturing only
+    # its selected device on fd 3. Cancel/ESC must stop before partitioning.
+    if ! requested=$(dialog --clear --title 'Installation disk' --output-fd 3 \
+        --menu 'Select the disk to ERASE. Size, model and serial are shown. USB and in-use disks are excluded.' \
+        0 0 0 "${options[@]}" 3>&1 >/dev/tty 2>/dev/tty </dev/tty); then
+        echo 'ERROR: disk selection cancelled; no disk selected' >&2
+        exit 1
+    fi
+    [[ -n $requested ]] || { echo 'ERROR: no disk selected' >&2; exit 1; }
+fi
 
 if [[ -n $requested ]]; then
     resolved=$(readlink -f -- "$requested") || exit 1

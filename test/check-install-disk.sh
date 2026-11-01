@@ -23,6 +23,7 @@ while IFS='|' read -r name type removable readonly size transport mounts; do
     case $output in
         NAME,TYPE) printf '%s %s\n' "$name" "$type" ;;
         RM,RO,SIZE,TRAN) printf '%s %s %s %s\n' "$removable" "$readonly" "$size" "$transport" ;;
+        SIZE,MODEL,SERIAL) printf '%s Fixture-SSD serial-%s\n' "$size" "${name##*/}" ;;
         MOUNTPOINTS)
             [[ $mounts != ERROR ]] || exit 1
             [[ $mounts == - ]] || printf '%s\n' "$mounts"
@@ -86,6 +87,37 @@ EOF
 refused
 selected /dev/nvme0n1 /dev/nvme0n1
 refused /dev/missing
+
+# Exercise the interactive path in a real pseudo-terminal. The dialog stub
+# selects the second disk and checks that both identifiable choices are shown.
+export DIALOG_ARGS=$work/dialog-args DIALOG_CHOICE=/dev/nvme1n1 DIALOG_CANCEL=0
+cat > "$work/bin/dialog" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$@" > "$DIALOG_ARGS"
+[[ $DIALOG_CANCEL == 0 ]] || exit 1
+printf '%s\n' "$DIALOG_CHOICE" >&3
+EOF
+chmod +x "$work/bin/dialog"
+printf -v menu_command '%q --interactive 2>%q' "$selector" "$work/menu-stderr"
+actual=$(script --quiet --return --command "$menu_command" /dev/null | tr -d '\r')
+[[ $actual == /dev/nvme1n1 ]]
+grep -q serial-nvme0n1 "$DIALOG_ARGS"
+grep -q serial-nvme1n1 "$DIALOG_ARGS"
+! grep -q /dev/sdb "$DIALOG_ARGS"
+export DIALOG_CANCEL=1
+if script --quiet --return --command "$menu_command" /dev/null > "$work/cancelled.log"; then
+    echo 'cancelled dialog accepted a disk' >&2
+    exit 1
+fi
+export DIALOG_CANCEL=0 DIALOG_CHOICE=/dev/sdb
+if script --quiet --return --command "$menu_command" /dev/null > "$work/invalid-choice.log"; then
+    echo 'dialog accepted an excluded USB disk' >&2
+    exit 1
+fi
+# An explicit target works without a terminal, bypassing the menu.
+actual=$("$selector" --interactive /dev/nvme0n1 2> "$work/stderr")
+[[ $actual == /dev/nvme0n1 ]]
+
 : > "$DISK_FIXTURE"
 refused
 
@@ -104,6 +136,14 @@ udevadm() { return 0; }
 task_error() { [[ $1 == 999 ]]; }
 export -f udevadm task_error
 bash -ec 'source "$FAI/hooks/partition.METAL.sh"; [[ $disklist == mmcblk0 ]]' > "$work/hook.log"
+cat > "$DISK_FIXTURE" <<'EOF'
+/dev/nvme0n1|disk|0|0|256000000000|nvme|-
+/dev/nvme1n1|disk|0|0|256000000000|nvme|-
+EOF
+export flag_menu=1 DIALOG_CHOICE=/dev/nvme1n1
+printf -v hook_command 'bash -ec %q' 'source "$FAI/hooks/partition.METAL.sh"; [[ $disklist == nvme1n1 ]]'
+SHELL=/bin/bash script --quiet --return --command "$hook_command" /dev/null > "$work/hook-menu.log"
+unset flag_menu
 : > "$DISK_FIXTURE"
 if bash -ec 'source "$FAI/hooks/partition.METAL.sh"' > "$work/hook.log" 2>&1; then
     echo "partition hook accepted an absent target" >&2
