@@ -42,7 +42,7 @@ jobs:
       - name: Install lint tools
         run: |
           apt-get update
-          apt-get install -y --no-install-recommends make shellcheck bsdextrautils curl xz-utils ca-certificates
+          apt-get install -y --no-install-recommends make shellcheck bsdextrautils curl xz-utils ca-certificates lvm2
       - run: make check
       - name: Package names exist in the Debian archive (amd64 + arm64)
         run: test/check-package-names.sh

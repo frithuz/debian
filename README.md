@@ -303,6 +303,9 @@ installer shell to check that the internal drive is detected and identify its pa
 The metal layout allocates 35 GiB to `/` and 10 GiB across the separate `/var`,
 log, audit, home, and tmp logical volumes. The LVM partition spans the remaining
 disk, but unused volume-group space stays free for later expansion with `lvextend`.
+The live installer disables LVM autoactivation so signatures exposed while
+repartitioning cannot activate old volumes and block `pvcreate`. The installed
+system retains normal LVM activation.
 
 **Cloud:** convert to raw (`qemu-img convert -O raw build/cloud-amd64.qcow2 build/cloud-amd64.raw`)
 and import it, e.g. AWS `import-snapshot` -> `register-image`, or `gcloud compute images create`.

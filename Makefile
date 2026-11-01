@@ -77,12 +77,14 @@ check:
 	@cd $(CONFIG) && bash -n class/[0-9]* scripts/*/* hooks/*.* bin/* files/usr/local/sbin/cis-check/HARDEN && echo "bash syntax: ok"
 	@bash -n test/*.sh && echo "test scripts syntax: ok"
 	@bash test/check-install-disk.sh
+	@if command -v lvmconfig >/dev/null; then bash test/check-lvm-autoactivation.sh; \
+	 else echo "installer LVM policy: skipped (install lvm2 to check)"; fi
 	@cd $(CONFIG) && for f in scripts/*/* hooks/*.* bin/*; do [ -x "$$f" ] || { echo "not executable: $$f"; exit 1; }; done && echo "scripts executable: ok"
 	@if command -v shellcheck >/dev/null; then \
 	    shellcheck -S warning -e SC2154,SC2086,SC2034,SC2016 \
 	        config/bin/* config/files/usr/local/sbin/cis-check/HARDEN config/scripts/SERVER/* config/scripts/HARDEN/* \
 	        config/scripts/METAL/* config/scripts/CLOUD/20-* config/scripts/LAST/9* \
-	        config/hooks/updatebase.DEBIAN config/hooks/partition.METAL.sh \
+	        config/hooks/updatebase.DEBIAN config/hooks/partition.METAL.sh config/hooks/setup.DEFAULT.sh \
 	        config/scripts/GRUB_EFI/05-initramfs test/*.sh \
 	    && echo "shellcheck (our scripts): ok"; fi
 	@head -1 $(USERDATA) | grep -qx '#cloud-config' || { echo "user-data must start with #cloud-config"; exit 1; }

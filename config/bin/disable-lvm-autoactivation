@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# Live installer only: setup-storage activates the VGs it creates explicitly.
+# Prevent udev/pvscan from activating signatures exposed by repartitioning.
+set -euo pipefail
+
+config_dir=${LVM_SYSTEM_DIR:-/etc/lvm}
+tmp=$(mktemp "$config_dir/.fai-lvmlocal.XXXXXX")
+trap 'rm -f "$tmp"' EXIT
+# Preserve existing base/local settings while overriding autoactivation. An
+# LVM_CONFIG environment override would not reach udev's pvscan processes.
+lvmconfig --type current --mergedconfig \
+    --config 'activation { auto_activation_volume_list = [] }' > "$tmp"
+chmod 0644 "$tmp"
+mv "$tmp" "$config_dir/lvmlocal.conf"
