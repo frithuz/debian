@@ -5,6 +5,7 @@
 
 error=0; trap 'error=$(($?>$error?$?:$error))' ERR # save maximum error code
 
+fcopy -M /etc/systemd/system/cloud-init-local.service.d/10-udev.conf
 $ROOTCMD systemctl enable systemd-networkd.service systemd-resolved.service
 # FAI writes a plain resolv.conf into the target during the install; make it
 # resolved's stub again (systemd-resolved's postinst does the same).

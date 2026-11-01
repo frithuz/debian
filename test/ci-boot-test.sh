@@ -82,6 +82,25 @@ else
     { cat "$src"; printf '\nssh_authorized_keys:\n  - %s\n' "$key"; } > "$out/user-data"
 fi
 
+# Keep network diagnostics available even when the guest never accepts SSH.
+# Vendor-data leaves the real user-data intact; bootcmd runs after cloud-init
+# has rendered networking, including when network-online timed out.
+cat > "$out/vendor-data" <<'EOF'
+#cloud-config
+bootcmd:
+  - |
+    {
+      echo '=== boot network diagnostics ==='
+      ip -br link
+      ip -br addr
+      networkctl status --all --no-pager
+      grep -r . /etc/systemd/network /run/systemd/network 2>/dev/null
+      journalctl -b -u systemd-networkd --no-pager -o short-monotonic
+      echo '=== end boot network diagnostics ==='
+    } > /dev/console 2>&1
+EOF
+export VENDORDATA=$out/vendor-data
+
 # QEMU removes its pidfile when it exits, so remember the PID.
 qemu_pid='' serial_pid=''
 start_qemu() { # qemu.sh arguments

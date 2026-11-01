@@ -1,0 +1,9 @@
+# Managed by FAI. Discover NICs after coldplug has loaded their drivers and
+# assigned predictable names, before cloud-init chooses fallback DHCP config.
+# This matters with Dracut and slow/emulated boots: otherwise only lo may exist.
+[Unit]
+Wants=systemd-udev-trigger.service
+After=systemd-udev-trigger.service
+
+[Service]
+ExecStartPre=/usr/bin/udevadm settle --timeout=120

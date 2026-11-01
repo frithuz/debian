@@ -16,6 +16,7 @@
 #   USERDATA=FILE      cloud-init user-data for the cloud seed (default: config/cloud-init/user-data).
 #                      metal-boot attaches a seed only when this is set; its user-data then
 #                      replaces the one baked into the install (NoCloud reads the seed drive last).
+#   VENDORDATA=FILE    optional cloud-init vendor-data (CI console diagnostics).
 #   HEADLESS=1         run in the background: no display, serial console to $work/serial.log,
 #                      PID in $work/qemu.pid (used by test/ci-boot-test.sh)
 #   QEMU_WORK=DIR      scratch dir for disks, NVRAM, seed (default: test/work)
@@ -83,9 +84,11 @@ console() { # $@ = how to show the console interactively
 cdrom() { echo -drive "if=none,id=cd0,media=cdrom,readonly=on,format=raw,file=$1" -device scsi-cd,drive=cd0,bus=scsi0.0; }
 disk_nvme() { echo -drive "if=none,id=d0,format=qcow2,file=$1" -device nvme,drive=d0,serial=fai-test; }
 seed() { # NoCloud seed drive from $userdata
+    local opts=()
     command -v cloud-localds >/dev/null || { echo "apt install cloud-image-utils" >&2; exit 1; }
     printf 'instance-id: test-%s\nlocal-hostname: %s\n' "$(date +%s)" "$1" > "$work/meta-data"
-    cloud-localds "$work/seed.iso" "$userdata" "$work/meta-data"
+    [[ -z ${VENDORDATA:-} ]] || opts+=(--vendor-data "$VENDORDATA")
+    cloud-localds "${opts[@]}" "$work/seed.iso" "$userdata" "$work/meta-data"
     echo -drive "if=virtio,format=raw,readonly=on,file=$work/seed.iso"
 }
 
