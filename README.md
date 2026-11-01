@@ -339,6 +339,15 @@ the ISO (metal seeds come from it) and the tests, but not the cloud image.
 - **Runner sizes:** Arm64 runners in *private* repositories are smaller (2 vCPU, 14 GB
   disk). Cloud builds fit; metal ISOs are tight.
 
+### Releases
+
+`.github/workflows/release.yml` runs only by hand (**Actions -> release -> Run workflow**).
+The tag defaults to `date@<UTC date>/run@<run number>` (e.g. `date@2026-10-31/run@42`);
+the optional `tag` input overrides it. It runs the whole `build` workflow on the selected branch,
+then creates a **draft** release with `cloud-<arch>.qcow2`, `metal-<arch>.iso` and a
+`SHA256SUMS` file for all of them. Review the draft and publish it; the tag is created
+on the built commit at that point. Verify a download with `sha256sum -c --ignore-missing SHA256SUMS`.
+
 ## Publishing this repository
 
 This repo is meant to be public. Here's what that exposes and what's kept out:
@@ -420,6 +429,7 @@ test/compare-packages.sh   diff two packages.tsv manifests
 test/ci-boot-test.sh       headless boot test: SSH login, cloud-init, cis-check, package drift
 test/check-package-names.sh  package_config/ names vs. the Debian archive, per arch (network, no root)
 .github/workflows/build.yml  CI: lint, then build + boot-test amd64 and arm64 natively
+.github/workflows/release.yml  manual: build via build.yml, then a draft release with checksums
 ```
 
 To **add a role** (e.g. `DOCKER`), create `package_config/DOCKER` (and `scripts/DOCKER/...`
