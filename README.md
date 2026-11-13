@@ -380,6 +380,30 @@ After editing anything in `config/`, just rerun `sudo make cloud` / `sudo make m
 The Makefile notices the change and rebuilds. Changes to `cloud-init/user-data` affect
 the ISO (metal seeds come from it) and the tests, but not the cloud image.
 
+## Provider VPS images
+
+Some VPS providers only offer their own Debian 13 image, with a passwordless-sudo
+`debian` account. `vps/setup` gives such a machine the same CIS Level 1 setup as our
+images and adds `jonathan` (keys from `gh:garbee`, passwordless sudo):
+
+```sh
+vps/setup debian@203.0.113.7      # from this checkout; or `sudo vps/setup --apply` on the VPS
+ssh jonathan@203.0.113.7 sudo reboot
+```
+
+It copies `vps/setup` and `config/files/` (and `config/secrets/grub-password.hash`,
+if present) to the VPS, then installs the `DEBIAN`/`HARDEN` packages and files the way
+`scripts/DEBIAN/30-sudo-rs`, `scripts/SERVER/{06-issue-net,10-lock-root}` and
+`scripts/HARDEN/*` do. The image's C `sudo` is replaced by sudo-rs only after
+sudo-rs accepts every sudoers file. If any user loses passwordless sudo in the
+swap, the script reinstalls `sudo` and stops. It ends with `cis-check`, then checks that
+`ssh jonathan@host sudo -n true` works. The provider's disk layout, network, apt
+sources and cloud-init stay as they are. `debian` keeps its account and sudo rule, but
+sshd's `AllowUsers` only lets `jonathan` in. The script won't touch sshd until
+`jonathan` has keys. You can run it again safely. Reboot afterwards so `/tmp`
+becomes a noexec tmpfs and AppArmor's boot options apply. If you change those FAI
+scripts, change `vps/setup` to match.
+
 ## CI (GitHub Actions)
 
 `.github/workflows/build.yml` runs on pushes to `main`, on pull requests, and by hand

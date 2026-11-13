@@ -1,0 +1,446 @@
+#!/usr/bin/env bash
+# Bring a provider's Debian 13 VPS to the same CIS Level 1 setup as our images
+# and add the 'jonathan' admin (SSH keys from GitHub, passwordless sudo).
+#
+#   vps/setup debian@203.0.113.7     from this checkout: copy the config over
+#                                    SSH, apply it with sudo, verify the login
+#   sudo vps/setup --apply           on the VPS itself, from a checkout there
+#
+# Options (both modes):
+#   --github USER   GitHub account whose public keys go to jonathan (default: garbee)
+#   --env ENV       login banner environment: local, dev, test, staging or
+#                   production (default: MOTD_ENV from config/class/SERVER.var)
+#
+# File contents come from config/files/ (the same files FAI installs), and the steps
+# mirror config/scripts/{DEBIAN/30-sudo-rs,SERVER/06-issue-net,SERVER/10-lock-root,
+# HARDEN/*}. Keep them in step when those change. Things the provider owns (disk
+# layout, network, apt sources, cloud-init) are left alone.
+#
+# The provider's 'debian' account and its sudo rule stay, but sshd then admits only
+# jonathan (AllowUsers). The script refuses to touch sshd until jonathan has keys,
+# and the remote mode checks `ssh jonathan@host sudo -n true` at the end. Re-running
+# is safe. Reboot afterwards so /tmp becomes a noexec tmpfs and AppArmor's boot
+# options apply.
+
+set -euo pipefail
+
+ADMIN=jonathan
+GITHUB=garbee
+MOTD_ENV=''
+here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+
+die() { echo "vps/setup: $*" >&2; exit 1; }
+say() { printf '\n==> %s\n' "$*"; }
+
+# ---------------------------------------------------------------- remote mode
+
+remote() {
+    local host=$1 repo dir rc=0 target_host
+    repo=$(cd "$here/.." && pwd)
+    [ -d "$repo/config/files" ] || die "run from a checkout (no $repo/config/files)"
+    local extra=()
+    [ -r "$repo/config/secrets/grub-password.hash" ] && extra+=(config/secrets/grub-password.hash)
+
+    say "copying config to $host"
+    dir=$(ssh "$host" 'mktemp -d /tmp/vps-setup.XXXXXX')
+    [[ $dir == /tmp/vps-setup.* ]] || die "unexpected temp dir from $host: $dir"
+    COPYFILE_DISABLE=1 tar -C "$repo" -czf - vps/setup config/files \
+        config/class/SERVER.var config/bin/check-motd-env "${extra[@]}" \
+        | ssh "$host" "tar -xzf - -C '$dir'"
+
+    say "applying on $host"
+    ssh -t "$host" "sudo bash '$dir/vps/setup' --apply --github '$GITHUB' --env '$MOTD_ENV'" || rc=$?
+    ssh "$host" "rm -rf '$dir'" 2>/dev/null || true
+    # rc 3: applied, but cis-check reported FAILs (still verify the login)
+    [ "$rc" = 0 ] || [ "$rc" = 3 ] || die "apply failed on $host (exit $rc)"
+
+    target_host=${host#*@}
+    say "verifying $ADMIN@$target_host can log in and sudo without a password"
+    ssh -o BatchMode=yes "$ADMIN@$target_host" 'sudo -n true' \
+        || die "$ADMIN@$target_host: login or passwordless sudo failed. Keep your current session open and investigate."
+    echo "ok: $ADMIN@$target_host"
+    [ "$rc" = 0 ] || echo "note: cis-check reported FAILs; see the output above."
+    echo "Reboot the VPS to finish (/tmp tmpfs, AppArmor boot options): ssh $ADMIN@$target_host sudo reboot"
+    return "$rc"
+}
+
+# ----------------------------------------------------------------- apply mode
+
+FILES=$here/../config/files
+SECRETS=$here/../config/secrets
+
+# Path of a file in config/files, preferring the most specific class.
+src() {
+    local c
+    for c in HARDEN SERVER DEBIAN FAIBASE; do
+        [ -f "$FILES$1/$c" ] && { echo "$FILES$1/$c"; return; }
+    done
+    die "config/files$1 not found"
+}
+# put MODE PATH...  install files from config/files, root-owned
+put() {
+    local mode=$1 p; shift
+    for p; do install -D -o root -g root -m "$mode" "$(src "$p")" "$p"; done
+}
+# Append a line unless a line matching the pattern (default: the line) exists.
+ensure_line() {
+    local file=$1 line=$2 pattern=${3:-}
+    if [ -n "$pattern" ]; then grep -Eq "$pattern" "$file" 2>/dev/null && return
+    else grep -qxF "$line" "$file" 2>/dev/null && return; fi
+    printf '%s\n' "$line" >> "$file"
+}
+
+apt_get() {
+    DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=l apt-get -y \
+        -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold "$@"
+}
+
+preflight() {
+    [ "$(id -u)" = 0 ] || die "--apply must run as root (sudo)"
+    [ -d "$FILES" ] || die "no config/files next to the script ($FILES)"
+    # shellcheck disable=SC1091
+    . /etc/os-release
+    [ "${ID:-}" = debian ] && [ "${VERSION_ID:-}" = 13 ] || die "expected Debian 13, found ${PRETTY_NAME:-unknown}"
+    [ -d /run/systemd/system ] || die "systemd is not running"
+    # The firewall only admits SSH on port 22.
+    local port
+    port=$(sshd -T 2>/dev/null | awk '$1 == "port" {print $2}' | sort -u | tr '\n' ' ')
+    [ "$port" = "22 " ] || die "sshd listens on '${port% }', but files/etc/nftables.conf only allows 22"
+}
+
+packages() {
+    say "packages"
+    apt_get update
+    # config/package_config/{DEBIAN,HARDEN} (+ chrony and curl from SERVER). sudo-rs
+    # is installed next to the image's sudo here; sudo_rs() removes sudo once
+    # sudo-rs is known to work. chrony replaces systemd-timesyncd (CIS 2.3).
+    apt_get install --no-install-recommends \
+        sudo-rs curl ca-certificates chrony unattended-upgrades wtmpdb libpam-wtmpdb \
+        nftables apparmor apparmor-utils apparmor-profiles libpam-pwquality \
+        aide aide-common systemd-journal-remote auditd libpam-tmpdir needrestart \
+        debsums lynis \
+        nullmailer- procinfo- telnet- inetutils-telnet- talk- nis- ldap-utils- \
+        ftp- tnftp- ufw- iptables-persistent-
+}
+
+# Login users who can run `sudo -n true` right now (the provider's debian,
+# typically, whose rule may come from sudoers.d rather than the sudo group).
+nopasswd_users() {
+    local u
+    for u in $(awk -F: '$3 >= 1000 && $3 < 65534 && $7 !~ /(nologin|false)$/ {print $1}' /etc/passwd); do
+        runuser -u "$u" -- sudo -n true </dev/null >/dev/null 2>&1 && echo "$u"
+    done
+    return 0
+}
+
+# config/scripts/DEBIAN/30-sudo-rs, on a system that comes with C sudo. sudo-rs
+# reads the same /etc/sudoers and /etc/sudoers.d, but rejects options it doesn't
+# know, so check every file before sudo goes. If anyone loses passwordless sudo
+# in the swap, put sudo back and stop.
+sudo_rs() {
+    say "sudo-rs (replacing sudo)"
+    local before after f u
+    before=$(nopasswd_users)
+
+    for f in /etc/sudoers.d/*; do
+        [ -f "$f" ] || continue
+        case $f in */README|*~|*.*) continue ;; esac   # sudo skips these names too
+        visudo-rs -cf "$f" || die "sudo-rs rejects $f; fix it and run again (sudo is still installed)"
+    done
+    # Ours is valid for both implementations, so it can go in while sudo is active.
+    put 0440 /etc/sudoers
+    visudo-rs -cf /etc/sudoers || die "sudo-rs rejects /etc/sudoers (sudo is still installed)"
+
+    if dpkg-query -W -f='${db:Status-Status}' sudo 2>/dev/null | grep -qx installed; then
+        # remove, not purge: /etc/sudoers and /etc/pam.d/sudo are sudo's conffiles,
+        # and purge would delete them. They're reinstalled from config/files below.
+        # sudo's prerm refuses to go when root has no password (the usual VPS
+        # image) unless forced. sudo-rs is checked above and the result below.
+        SUDO_FORCE_REMOVE=yes apt_get remove sudo
+    fi
+    # sudo is gone now: restore the command names at once.
+    ln -sfn sudo-rs /usr/bin/sudo
+    ln -sfn ../bin/visudo-rs /usr/sbin/visudo
+    put 0440 /etc/sudoers
+    put 0644 /etc/pam.d/sudo
+
+    after=$(nopasswd_users)
+    for u in $before; do
+        grep -qx "$u" <<< "$after" && continue
+        echo "vps/setup: $u lost passwordless sudo under sudo-rs; reinstalling sudo" >&2
+        rm -f /usr/bin/sudo /usr/sbin/visudo
+        apt_get install --no-install-recommends sudo
+        die "kept C sudo; check /etc/sudoers.d against sudo-rs and run again"
+    done
+
+    local user_path=/usr/local/bin:/usr/bin:/bin:/usr/local/games:/usr/games
+    local sbin_path=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/games:/usr/games
+    ensure_line /etc/environment "PATH=\"$sbin_path\"" "^PATH=\"$sbin_path\"$"
+    sed -i "s|PATH=\"$user_path\"|PATH=\"$sbin_path\"|" /etc/profile
+    sed -i "s|^ENV_PATH\(\s\+\)PATH=$user_path\$|ENV_PATH\1PATH=$sbin_path|" /etc/login.defs
+    grep -qF "PATH=\"$sbin_path\"" /etc/profile || die "sbin not added to PATH in /etc/profile"
+    grep -qE "^ENV_PATH\s+PATH=$sbin_path\$" /etc/login.defs || die "sbin not added to ENV_PATH in /etc/login.defs"
+}
+
+# The same account cloud-init makes on our images
+# (files/etc/cloud/cloud.cfg.d/90-fai-defaults.cfg): locked password, keys only,
+# passwordless sudo.
+admin_user() {
+    say "user $ADMIN"
+    local groups=() g
+    for g in adm kvm sudo; do getent group "$g" >/dev/null && groups+=("$g"); done
+    if ! id "$ADMIN" >/dev/null 2>&1; then
+        useradd --create-home --shell /bin/bash --comment Jonathan "$ADMIN"
+    fi
+    [ ${#groups[@]} = 0 ] || usermod -aG "$(IFS=,; echo "${groups[*]}")" "$ADMIN"
+    usermod -L "$ADMIN"   # no password; sshd (UsePAM) still accepts keys
+
+    local home keys tmp
+    home=$(getent passwd "$ADMIN" | cut -d: -f6)
+    keys=$home/.ssh/authorized_keys
+    tmp=$(mktemp)
+    curl -fsS --max-time 30 "https://github.com/$GITHUB.keys" > "$tmp" || { rm -f "$tmp"; die "could not fetch https://github.com/$GITHUB.keys"; }
+    grep -qE '^(ssh-|ecdsa-|sk-)' "$tmp" || { rm -f "$tmp"; die "github.com/$GITHUB has no SSH keys"; }
+    install -d -o "$ADMIN" -g "$ADMIN" -m 0700 "$home/.ssh"
+    touch "$keys"
+    while IFS= read -r k; do
+        [ -n "$k" ] && ensure_line "$keys" "$k"
+    done < "$tmp"
+    rm -f "$tmp"
+    chown "$ADMIN:$ADMIN" "$keys"; chmod 0600 "$keys"
+
+    printf '%s ALL=(ALL:ALL) NOPASSWD:ALL\n' "$ADMIN" > /etc/sudoers.d/90-$ADMIN.new
+    chmod 0440 /etc/sudoers.d/90-$ADMIN.new
+    visudo-rs -cf /etc/sudoers.d/90-$ADMIN.new
+    mv -f /etc/sudoers.d/90-$ADMIN.new /etc/sudoers.d/90-$ADMIN
+    runuser -u "$ADMIN" -- sudo -n true || die "$ADMIN has no passwordless sudo"
+}
+
+# config/scripts/HARDEN/10-config and SERVER/06-issue-net
+config_files() {
+    say "configuration files"
+    put 0600 /etc/ssh/sshd_config.d/10-cis.conf /etc/ssh/sshd_config.d/20-frithuz-banner.conf
+    chmod 0600 /etc/ssh/sshd_config
+    put 0644 /etc/sysctl.d/90-hardening.conf /etc/modprobe.d/90-hardening.conf \
+        /etc/apt/apt.conf.d/52-frithuz-unattended-upgrades
+    put 0755 /etc/nftables.conf
+    put 0640 /etc/audit/rules.d/50-hardening.rules
+    put 0644 /etc/issue /etc/motd
+    # config/scripts/SERVER/45-motd: Debian's pam_motd runs update-motd.d, where
+    # the Frithuz status script replaces 10-uname (no OS details before login).
+    put 0755 /etc/update-motd.d/05-frithuz
+    [ ! -e /etc/update-motd.d/10-uname ] || chmod 0644 /etc/update-motd.d/10-uname
+    sed -i '/^ENV=/d' /etc/environment
+    printf 'ENV=%s\n' "$MOTD_ENV" >> /etc/environment
+    local stack
+    for stack in sshd login; do
+        grep -Eq '^session[[:space:]]+optional[[:space:]]+pam_motd\.so[[:space:]]+motd=/run/motd.dynamic[[:space:]]*$' /etc/pam.d/$stack \
+            || die "/etc/pam.d/$stack has no pam_motd motd=/run/motd.dynamic line"
+    done
+    put 0755 /usr/local/sbin/update-frithuz-issue
+    put 0644 /usr/local/share/frithuz/issue.net /etc/systemd/system/frithuz-issue.service
+    /usr/local/sbin/update-frithuz-issue
+    put 0644 /etc/default/grub.d/40-cis.cfg
+    put 0440 /etc/sudoers.d/50-cis
+    visudo-rs -cf /etc/sudoers.d/50-cis
+    put 0644 /etc/profile.d/50-cis.sh \
+        /etc/systemd/journald.conf.d/50-cis.conf /etc/systemd/journald.conf.d/syslog.conf \
+        /etc/systemd/resolved.conf.d/50-hardening.conf \
+        /etc/aide/aide.conf.d/99_cis_audit_tools \
+        /etc/systemd/system/aide-firstboot-init.service \
+        /etc/cis-check/exceptions \
+        /etc/tmpfiles.d/cis-logs.conf \
+        /etc/systemd/system/dailyaidecheck.service.d/50-cis-umask.conf \
+        /etc/systemd/system/apt-daily-upgrade.service.d/50-cis-umask.conf \
+        /etc/systemd/system/unattended-upgrades.service.d/50-cis-umask.conf
+    put 0755 /usr/local/sbin/cis-check
+    [ -f /etc/logrotate.d/dpkg ] && sed -i 's/create 0\?644 root root/create 0640 root root/' /etc/logrotate.d/dpkg
+
+    # 1.1.2.x /dev/shm and /tmp: nodev,nosuid,noexec. The provider's disk layout
+    # stays; /tmp becomes a tmpfs (FAIBASE/10-misc) unless it already has an entry.
+    ensure_line /etc/fstab "tmpfs /dev/shm tmpfs rw,nosuid,nodev,noexec 0 0" '^\S+\s+/dev/shm\s'
+    ensure_line /etc/fstab "tmpfs     /tmp tmpfs     nodev,nosuid,noexec,size=50%,mode=1777   0    0" '^\S+\s+/tmp\s'
+    sed -i 's#^\(tmpfs\s\+/tmp\s\+tmpfs\s\+\)nodev,nosuid,\(size\)#\1nodev,nosuid,noexec,\2#' /etc/fstab
+    mount -o remount,nosuid,nodev,noexec /dev/shm
+    # Debian images usually have the systemd tmp.mount (a tmpfs) already: fix it
+    # in place. A /tmp on the root disk only becomes the tmpfs after a reboot.
+    if [ "$(findmnt -no FSTYPE /tmp)" = tmpfs ]; then
+        mount -o remount,nosuid,nodev,noexec /tmp
+    fi
+    ensure_line /etc/security/limits.conf '* hard core 0'
+}
+
+# config/scripts/HARDEN/20-pam
+pam() {
+    say "PAM"
+    if [ -z "$(dpkg-divert --list /usr/share/pam-configs/unix)" ]; then
+        mkdir -p /usr/share/pam-configs.debian
+        dpkg-divert --local --rename --divert /usr/share/pam-configs.debian/unix \
+            --add /usr/share/pam-configs/unix
+    fi
+    sed -E 's/[[:space:]]+nullok\b//' /usr/share/pam-configs.debian/unix > /usr/share/pam-configs/unix
+    put 0644 /usr/share/pam-configs/faillock /usr/share/pam-configs/faillock_notify \
+        /usr/share/pam-configs/pwhistory /etc/security/pwquality.conf.d/50-cis.conf
+    ensure_line /etc/security/faillock.conf 'deny = 5'
+    ensure_line /etc/security/faillock.conf 'unlock_time = 900' '^unlock_time = 900$'
+    DEBIAN_FRONTEND=noninteractive pam-auth-update --enable unix faillock faillock_notify pwquality pwhistory
+    local m
+    for m in pam_faillock pam_pwquality pam_pwhistory pam_unix; do
+        grep -q "$m" /etc/pam.d/common-auth /etc/pam.d/common-password || die "$m missing from PAM stack"
+    done
+    ! grep -q nullok /etc/pam.d/common-auth || die "nullok still in common-auth"
+
+    groupadd -f sugroup
+    grep -q 'pam_wheel.so.*group=sugroup' /etc/pam.d/su || \
+        sed -i '/^auth\s\+sufficient\s\+pam_rootok.so/a auth       required   pam_wheel.so use_uid group=sugroup' /etc/pam.d/su
+    grep -q 'group=sugroup' /etc/pam.d/su || die "pam_wheel not added to /etc/pam.d/su"
+}
+
+# config/scripts/HARDEN/30-accounts and SERVER/10-lock-root
+accounts() {
+    say "accounts"
+    local defs=/etc/login.defs u
+    sed -i 's/^PASS_MAX_DAYS\s.*/PASS_MAX_DAYS\t365/' $defs
+    sed -i 's/^PASS_WARN_AGE\s.*/PASS_WARN_AGE\t7/' $defs
+    sed -i 's/^ENCRYPT_METHOD\s.*/ENCRYPT_METHOD YESCRYPT/' $defs
+    if grep -qE '^UMASK\s' $defs; then sed -i 's/^UMASK\s.*/UMASK\t\t027/' $defs
+    else printf 'UMASK\t\t027\n' >> $defs; fi
+    useradd -D -f 45
+    # Passwords the provider set (e.g. debian's, for its console) don't age: sshd
+    # takes keys only, so a password only matters once someone is already in.
+    # Record that as a local cis-check exception instead of failing 5.4.1.1/5.
+    local pw_users
+    pw_users=$(awk -F: '$2 ~ /^\$/ {print $1}' /etc/shadow | tr '\n' ' ')
+    if [ -n "$pw_users" ]; then
+        for u in 5.4.1.1 5.4.1.5; do
+            ensure_line /etc/cis-check/exceptions \
+                "$u provider-set passwords (${pw_users% }) don't age: SSH is key-only, so they only matter after login (vps/setup)" \
+                "^$u "
+        done
+    fi
+    usermod -L root
+
+    chmod 0644 /etc/passwd /etc/group /etc/shells
+    chmod 0640 /etc/shadow /etc/gshadow
+    chgrp shadow /etc/shadow /etc/gshadow
+    for u in passwd- group-; do [ -f /etc/$u ] && chmod 0644 /etc/$u; done
+    for u in shadow- gshadow-; do [ -f /etc/$u ] && { chmod 0640 /etc/$u; chgrp shadow /etc/$u; }; done
+    [ -f /etc/security/opasswd ] && chmod 0600 /etc/security/opasswd
+    chmod 0700 /root
+    return 0
+}
+
+# config/scripts/HARDEN/50-grub-password, plus regenerating grub.cfg (AppArmor
+# boot options). Only if the provider boots this machine with our GRUB.
+grub() {
+    say "GRUB"
+    if [ ! -f /etc/grub.d/10_linux ] || ! command -v update-grub >/dev/null; then
+        echo "no GRUB here (provider-managed boot?): 1.3.1.2 and 1.4.x will be reported by cis-check"
+        return 0
+    fi
+    local hash='' pw
+    if [ -r "$SECRETS/grub-password.hash" ]; then
+        hash=$(grep -m1 -oE 'grub\.pbkdf2\.[^[:space:]]+' "$SECRETS/grub-password.hash" || true)
+        [ -n "$hash" ] || die "config/secrets/grub-password.hash has no grub.pbkdf2... hash"
+    elif [ -f /etc/grub.d/01_cis_password ]; then
+        hash=$(grep -m1 -oE "grub\\.pbkdf2\\.[^[:space:]']+" /etc/grub.d/01_cis_password || true)
+    fi
+    if [ -z "$hash" ]; then
+        pw=$(head -c 48 /dev/urandom | base64 -w0)
+        hash=$(printf '%s\n%s\n' "$pw" "$pw" | grub-mkpasswd-pbkdf2 | awk '/grub\.pbkdf2/ {print $NF}')
+        unset pw
+    fi
+    [[ $hash == grub.pbkdf2.* ]] || die "no usable grub password hash"
+    {
+        echo '#!/bin/sh'
+        echo '# Managed by vps/setup (class HARDEN), CIS 1.4.1. Hash from config/secrets/grub-password.hash, or random.'
+        echo "echo 'set superusers=\"grubadmin\"'"
+        echo "echo 'password_pbkdf2 grubadmin $hash'"
+    } > /etc/grub.d/01_cis_password
+    chmod 0700 /etc/grub.d/01_cis_password
+    sed -i 's/^CLASS="--class gnu-linux --class gnu --class os"$/CLASS="--class gnu-linux --class gnu --class os --unrestricted"/' /etc/grub.d/10_linux
+    grep -q -- '--unrestricted' /etc/grub.d/10_linux || die "could not mark boot entries --unrestricted"
+    (umask 077; update-grub)
+    chmod 0600 /boot/grub/grub.cfg
+}
+
+# config/scripts/HARDEN/40-services, then make the running system match.
+services() {
+    say "services"
+    systemctl daemon-reload
+    systemctl enable nftables.service auditd.service apparmor.service chrony.service \
+        dailyaidecheck.timer aide-firstboot-init.service apt-daily.timer \
+        apt-daily-upgrade.timer frithuz-issue.service
+    systemctl mask rsync.service systemd-journal-remote.socket systemd-journal-remote.service
+    if [ -f /etc/crontab ]; then
+        chmod 0600 /etc/crontab
+        chmod 0700 /etc/cron.hourly /etc/cron.daily /etc/cron.weekly /etc/cron.monthly /etc/cron.d
+        rm -f /etc/cron.deny
+        touch /etc/cron.allow; chmod 0640 /etc/cron.allow
+        chown root:crontab /etc/cron.allow 2>/dev/null || chown root:root /etc/cron.allow
+        systemctl enable cron.service
+    fi
+
+    sysctl --system >/dev/null
+    systemd-tmpfiles --create /etc/tmpfiles.d/cis-logs.conf
+    systemctl restart systemd-journald
+    systemctl is-active -q systemd-resolved && systemctl restart systemd-resolved
+    augenrules --load >/dev/null
+    systemctl restart auditd || true   # auditd refuses manual restarts on some setups; rules are loaded
+
+    # sshd last before the firewall: the config must parse, and jonathan must have
+    # keys (admin_user checked that). Existing sessions survive a reload.
+    sshd -t
+    systemctl reload ssh
+    nft -c -f /etc/nftables.conf
+    systemctl restart nftables
+}
+
+apply() {
+    preflight
+    packages
+    sudo_rs
+    admin_user
+    config_files
+    pam
+    accounts
+    grub
+    services
+
+    say "AIDE baseline (in the background; takes a while)"
+    systemctl start --no-block aide-firstboot-init.service
+
+    say "cis-check"
+    if /usr/local/sbin/cis-check --quiet; then
+        echo "cis-check: no FAILs"
+    else
+        echo "cis-check reported FAILs (a /tmp FAIL clears after a reboot if /tmp was on disk)"
+        return 3
+    fi
+}
+
+# ----------------------------------------------------------------------- main
+
+mode='' host=''
+while [ $# -gt 0 ]; do
+    case $1 in
+        --apply)   mode=apply; shift ;;
+        --github)  [ $# -ge 2 ] || die "--github needs a user"; GITHUB=$2; shift 2 ;;
+        --env)     [ $# -ge 2 ] || die "--env needs a value"; MOTD_ENV=$2; shift 2 ;;
+        -h|--help) sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -*)        die "unknown option $1 (see --help)" ;;
+        *)         [ -z "$host" ] || die "one host only"; host=$1; mode=remote; shift ;;
+    esac
+done
+[[ $GITHUB =~ ^[A-Za-z0-9-]+$ ]] || die "invalid GitHub user: $GITHUB"
+if [ -z "$MOTD_ENV" ]; then
+    # shellcheck source=/dev/null
+    MOTD_ENV=$(. "$here/../config/class/SERVER.var" && echo "$MOTD_ENV")
+fi
+# via bash: the remote copy sits in /tmp, which is noexec once hardened
+bash "$here/../config/bin/check-motd-env" "$MOTD_ENV"
+case $mode in
+    apply)  apply ;;
+    remote) remote "$host" ;;
+    *)      die "usage: vps/setup USER@HOST | sudo vps/setup --apply (see --help)" ;;
+esac

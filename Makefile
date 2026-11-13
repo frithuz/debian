@@ -83,7 +83,7 @@ deps: apt-ready
 
 check: motd-ready
 	@cd $(CONFIG) && bash -n class/[0-9]* scripts/*/* hooks/*.* bin/* files/usr/local/sbin/cis-check/HARDEN && echo "bash syntax: ok"
-	@bash -n test/*.sh && echo "test scripts syntax: ok"
+	@bash -n test/*.sh vps/setup && echo "test scripts syntax: ok"
 	@bash test/check-install-disk.sh
 	@bash test/check-metal-storage.sh
 	@bash test/check-metal-hostname.sh
@@ -109,7 +109,7 @@ check: motd-ready
 	        config/bin/* config/files/usr/local/sbin/cis-check/HARDEN config/scripts/SERVER/* config/scripts/HARDEN/* \
 	        config/scripts/METAL/* config/scripts/CLOUD/20-* config/scripts/LAST/9* \
 	        config/hooks/updatebase.DEBIAN config/hooks/instsoft.SERVER config/hooks/partition.METAL.sh config/hooks/setup.DEFAULT.sh \
-	        config/scripts/GRUB_EFI/05-initramfs test/*.sh \
+	        config/scripts/GRUB_EFI/05-initramfs test/*.sh vps/setup \
 	    && echo "shellcheck (our scripts): ok"; fi
 	@head -1 $(USERDATA) | grep -qx '#cloud-config' || { echo "user-data must start with #cloud-config"; exit 1; }
 	@! grep -nE '^\s*(packages|package_update|package_upgrade|apt)\s*:' $(USERDATA) || { \
